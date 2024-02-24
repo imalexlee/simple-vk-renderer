@@ -1,0 +1,2 @@
+#!/bin/sh
+cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_EXPORT_COMPILE_COMMANDS=1 -DGLFW_BUILD_DOCS=OFF -S ../ -B ../out/debug
