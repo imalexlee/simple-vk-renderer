@@ -1,4 +1,9 @@
 #include "vk_engine.h"
+#include "fmt/base.h"
+#include "vk_descriptors.h"
+#include "vk_pipelines.h"
+#include <cstdio>
+#include <vulkan/vulkan_core.h>
 #define GLFW_INCLUDE_VULKAN
 #define VMA_IMPLEMENTATION
 #include "vk_mem_alloc.h"
@@ -19,7 +24,7 @@
 #include <vk_initializers.h>
 #include <vk_types.h>
 
-#include "VkBootstrap.h"
+// #include "VkBootstrap.h"
 
 // #define ALLOW_MAILBOX_MODE
 
@@ -31,8 +36,8 @@ constexpr bool use_validation_layers = false;
 constexpr bool use_validation_layers = true;
 #endif
 
-constexpr std::array<const char *, 2> device_extensions{
-    "VK_KHR_portability_subset",
+constexpr std::array<const char *, 1> device_extensions{
+    //    "VK_KHR_portability_subset",
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -70,7 +75,7 @@ std::vector<const char *> get_required_extensions() {
   for (uint32_t i{0}; i < ext_count; ++i) {
     extensions.emplace_back(glfw_extensions[i]);
   }
-  extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  // extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 
   if (use_validation_layers) {
     extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -144,32 +149,37 @@ void VulkanEngine::init() {
 
   _window = glfwCreateWindow(_window_extent.width, _window_extent.height,
                              "Vulkan window", nullptr, nullptr);
-
   create_instance();
   setup_debug_messenger();
   create_surface();
   pick_physical_device();
   create_logical_device();
+  create_allocator();
   create_swapchain();
   create_image_views();
   init_commands();
   init_sync_structures();
-
-  VmaAllocatorCreateInfo allocatorInfo = {};
-  allocatorInfo.physicalDevice = _physical_device;
-  allocatorInfo.device = _device;
-  allocatorInfo.instance = _instance;
-  allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
-  vmaCreateAllocator(&allocatorInfo, &_allocator);
-
-  _main_deletion_queue.push_function(
-      [&]() { vmaDestroyAllocator(_allocator); });
+  init_descriptors();
+  init_pipelines();
 
   // guide_init_vulkan();
   // guide_init_swapchain();
   // guide_init_commands();
   // guide_init_sync_structures();
 }
+
+void VulkanEngine::create_allocator() {
+  VmaAllocatorCreateInfo allocatorInfo = {};
+  allocatorInfo.physicalDevice = _physical_device;
+  allocatorInfo.device = _device;
+  allocatorInfo.instance = _instance;
+  allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+
+  VK_CHECK(vmaCreateAllocator(&allocatorInfo, &_allocator));
+
+  _main_deletion_queue.push_function(
+      [&]() { vmaDestroyAllocator(_allocator); });
+};
 
 // END OF GUIDE FUNCTIONS
 
@@ -200,8 +210,8 @@ void VulkanEngine::create_instance() {
   VkInstanceCreateInfo instance_create_info{};
   instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instance_create_info.pApplicationInfo = &app_info;
-  instance_create_info.flags |=
-      VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+  //  instance_create_info.flags |=
+  //      VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
   instance_create_info.enabledExtensionCount =
       static_cast<uint32_t>(extensions.size());
   instance_create_info.ppEnabledExtensionNames = extensions.data();
@@ -512,6 +522,45 @@ void VulkanEngine::create_swapchain() {
                                    _swap_chain_images.data()));
   _swap_chain_format = surface_format.format;
   _swap_chain_extent = extent;
+
+  VkExtent3D draw_image_extent{
+      .width = _window_extent.width,
+      .height = _window_extent.height,
+      .depth = 1,
+  };
+
+  _draw_image.image_format = VK_FORMAT_R16G16B16A16_SFLOAT;
+  _draw_image.image_extent = draw_image_extent;
+
+  VkImageUsageFlags draw_image_usages{};
+  draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+  draw_image_usages |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+  draw_image_usages |= VK_IMAGE_USAGE_STORAGE_BIT;
+  draw_image_usages |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+  VkImageCreateInfo image_create_info = vkinit::image_create_info(
+      _draw_image.image_format, draw_image_usages, draw_image_extent);
+
+  VmaAllocationCreateInfo image_alloc_info{};
+
+  image_alloc_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  image_alloc_info.requiredFlags =
+      VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  VK_CHECK(vmaCreateImage(_allocator, &image_create_info, &image_alloc_info,
+                          &_draw_image.image, &_draw_image.allocation,
+                          nullptr));
+
+  VkImageViewCreateInfo image_view_crete_info = vkinit::imageview_create_info(
+      _draw_image.image_format, _draw_image.image, VK_IMAGE_ASPECT_COLOR_BIT);
+
+  VK_CHECK(vkCreateImageView(_device, &image_view_crete_info, nullptr,
+                             &_draw_image.image_view));
+
+  _main_deletion_queue.push_function([=, this]() {
+    vkDestroyImageView(_device, _draw_image.image_view, nullptr);
+    vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
+  });
 };
 
 void VulkanEngine::create_image_views() {
@@ -587,6 +636,86 @@ void VulkanEngine::init_sync_structures() {
   }
 };
 
+void VulkanEngine::init_descriptors() {
+  std::vector<DescriptorAllocator::PoolSizeRatio> sizes{
+      {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1}};
+
+  _global_descriptor_allocator.init_pool(_device, 10, sizes);
+
+  {
+    DescriptorLayoutBuilder builder;
+    builder.add_binding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
+    _draw_image_descriptor_layout =
+        builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
+  }
+
+  _draw_image_descriptors = _global_descriptor_allocator.allocate(
+      _device, _draw_image_descriptor_layout);
+
+  VkDescriptorImageInfo image_info{};
+  image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+  image_info.imageView = _draw_image.image_view;
+
+  VkWriteDescriptorSet draw_image_write{};
+  draw_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+  draw_image_write.pNext = nullptr;
+  draw_image_write.dstSet = _draw_image_descriptors;
+  draw_image_write.dstBinding = 0;
+  draw_image_write.pImageInfo = &image_info;
+  draw_image_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+  draw_image_write.descriptorCount = 1;
+
+  vkUpdateDescriptorSets(_device, 1, &draw_image_write, 0, nullptr);
+}
+
+void VulkanEngine::init_pipelines() { init_background_pipelines(); }
+
+void VulkanEngine::init_background_pipelines() {
+  VkPipelineLayoutCreateInfo compute_layout{};
+  compute_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+  compute_layout.pNext = nullptr;
+  compute_layout.pSetLayouts = &_draw_image_descriptor_layout;
+  compute_layout.setLayoutCount = 1;
+
+  VK_CHECK(vkCreatePipelineLayout(_device, &compute_layout, nullptr,
+                                  &_gradient_pipeline_layout));
+
+  VkShaderModule compute_draw_shader{};
+
+  if (!vkutil::load_shader_module("../../shaders/gradient.comp.spv", _device,
+                                  &compute_draw_shader)) {
+    fmt::println("Error building compute shader");
+  }
+
+  VkPipelineShaderStageCreateInfo stage_info{};
+  stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+  stage_info.pNext = nullptr;
+  stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+  stage_info.module = compute_draw_shader;
+  stage_info.pName = "main";
+
+  VkComputePipelineCreateInfo compute_pipeline_create_info{};
+  compute_pipeline_create_info.sType =
+      VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+  compute_pipeline_create_info.pNext = nullptr;
+  compute_pipeline_create_info.layout = _gradient_pipeline_layout;
+  compute_pipeline_create_info.stage = stage_info;
+
+  VK_CHECK(vkCreateComputePipelines(_device, nullptr, 1,
+                                    &compute_pipeline_create_info, nullptr,
+                                    &_gradient_pipeline));
+
+  vkDestroyShaderModule(_device, compute_draw_shader, nullptr);
+
+  _main_deletion_queue.push_function([&]() {
+    vkDestroyPipelineLayout(_device, _gradient_pipeline_layout, nullptr);
+    vkDestroyPipeline(_device, _gradient_pipeline, nullptr);
+    vkDestroyDescriptorSetLayout(_device, _draw_image_descriptor_layout,
+                                 nullptr);
+    _global_descriptor_allocator.destroy_pool(_device);
+  });
+}
+
 void VulkanEngine::cleanup() {
 
   _main_deletion_queue.flush();
@@ -617,6 +746,7 @@ void VulkanEngine::cleanup() {
 void VulkanEngine::run() {
   while (!glfwWindowShouldClose(_window)) {
     glfwPollEvents();
+
     draw();
     //   guide_draw();
   }
@@ -625,17 +755,13 @@ void VulkanEngine::run() {
 
 void VulkanEngine::draw() {
 
-  std::cout << _frame_number << "\n";
-  std::cout << "BRUH 0000000\n";
-  // timeout of 1 second
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._render_fence, true,
-                           100000000000000));
+                           10000000000));
   get_current_frame().deletion_queue.flush();
-  std::cout << "BRUH 1111111\n";
   VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._render_fence));
 
   uint32_t image_index{};
-  VK_CHECK(vkAcquireNextImageKHR(_device, _swap_chain, 100000000000000,
+  VK_CHECK(vkAcquireNextImageKHR(_device, _swap_chain, 10000000000,
                                  get_current_frame()._swapchain_semaphore,
                                  nullptr, &image_index));
 
@@ -648,26 +774,35 @@ void VulkanEngine::draw() {
   command_begin_info.pInheritanceInfo = nullptr;
   command_begin_info.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
+  _draw_extent.width = _draw_image.image_extent.width;
+  _draw_extent.height = _draw_image.image_extent.height;
+
   VK_CHECK(vkBeginCommandBuffer(cmd, &command_begin_info));
 
-  // transition img into a writeable mode
+  // transition drawing image to a writeable mode
+  vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_GENERAL);
+
+  draw_background(cmd);
+
+  // transition swapchain image into a transfer destination
+  vkutil::transition_image(cmd, _draw_image.image, VK_IMAGE_LAYOUT_GENERAL,
+                           VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+
+  // transition drawing image to a transer source
   vkutil::transition_image(cmd, _swap_chain_images[image_index],
-                           VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL);
+                           VK_IMAGE_LAYOUT_UNDEFINED,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-  VkClearColorValue clear_value{};
-  float flash = abs(sin(_frame_number / 120.f));
-  clear_value = {{0.0f, 0.0f, flash, 1.0f}};
+  // copy the _draw_image that was drawn to the swapchain image
+  vkutil::copy_image(cmd, _draw_image.image, _swap_chain_images[image_index],
+                     _draw_extent, _swap_chain_extent);
 
-  VkImageSubresourceRange clear_range =
-      vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
-
-  vkCmdClearColorImage(cmd, _swap_chain_images[image_index],
-                       VK_IMAGE_LAYOUT_GENERAL, &clear_value, 1, &clear_range);
-
-  // transition img into a presentable mode
+  // transition swapchain image to a presentable mode after it was copied into
   vkutil::transition_image(cmd, _swap_chain_images[image_index],
-                           VK_IMAGE_LAYOUT_GENERAL,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+
   VK_CHECK(vkEndCommandBuffer(cmd));
 
   // we've got a complete command buffer, now hook up with sync structures
@@ -706,7 +841,6 @@ void VulkanEngine::draw() {
   VK_CHECK(vkQueueSubmit2(_graphics_queue, 1, &submit_info,
                           get_current_frame()._render_fence));
 
-  std::cout << "BRUH 2222222\n";
   VkPresentInfoKHR present_info{};
   present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
   present_info.swapchainCount = 1;
@@ -718,9 +852,26 @@ void VulkanEngine::draw() {
 
   VK_CHECK(vkQueuePresentKHR(_graphics_queue, &present_info));
 
-  std::cout << "BRUH 333333\n";
   ++_frame_number;
 }
+
+void VulkanEngine::draw_background(VkCommandBuffer cmd) {
+
+  VkClearColorValue clear_value{};
+  float flash = fabs(sin(_frame_number / 120.f));
+
+  clear_value = {{0.0f, 0.0f, flash, 1.0f}};
+
+  VkImageSubresourceRange clear_range =
+      vkinit::image_subresource_range(VK_IMAGE_ASPECT_COLOR_BIT);
+
+  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_COMPUTE, _gradient_pipeline);
+  vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_COMPUTE,
+                          _gradient_pipeline_layout, 0, 1,
+                          &_draw_image_descriptors, 0, nullptr);
+  vkCmdDispatch(cmd, std::ceil(_draw_extent.width / 16.0),
+                std::ceil(_draw_extent.height / 16.0), 1);
+};
 
 // void VulkanEngine::guide_init_vulkan() {
 //

@@ -1,50 +1,10 @@
 #pragma once
 
+#include "vk_descriptors.h"
 #include "vk_mem_alloc.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
-#include <optional>
 #include <vk_types.h>
-
-struct DeletionQueue {
-  std::deque<std::function<void()>> deletors;
-
-  void push_function(std::function<void()> &&function) {
-    deletors.push_back(function);
-  }
-
-  void flush() {
-    // reverse iterate the deletion queue to execute all the functions
-    for (auto it = deletors.rbegin(); it != deletors.rend(); it++) {
-      (*it)(); // call functors
-    }
-
-    deletors.clear();
-  }
-};
-
-struct QueueFamilyIndices {
-  std::optional<uint32_t> graphics_family;
-  std::optional<uint32_t> present_family;
-  bool is_complete() {
-    return graphics_family.has_value() && present_family.has_value();
-  }
-};
-
-struct SwapChainSupportDetails {
-  VkSurfaceCapabilitiesKHR capabilities;
-  std::vector<VkSurfaceFormatKHR> formats;
-  std::vector<VkPresentModeKHR> present_modes;
-};
-
-struct FrameData {
-  VkCommandPool command_pool;
-  VkCommandBuffer main_command_buffer;
-  VkSemaphore _swapchain_semaphore;
-  VkSemaphore _render_semaphore;
-  VkFence _render_fence;
-  DeletionQueue deletion_queue;
-};
 
 constexpr static uint32_t FRAME_OVERLAP = 2;
 
@@ -74,6 +34,15 @@ class VulkanEngine {
   std::array<FrameData, FRAME_OVERLAP> _frames{};
 
   VmaAllocator _allocator;
+  AllocatedImage _draw_image;
+  VkExtent2D _draw_extent;
+
+  DescriptorAllocator _global_descriptor_allocator;
+  VkDescriptorSet _draw_image_descriptors;
+  VkDescriptorSetLayout _draw_image_descriptor_layout;
+
+  VkPipeline _gradient_pipeline;
+  VkPipelineLayout _gradient_pipeline_layout;
 
   FrameData &get_current_frame() {
     return _frames[_frame_number % FRAME_OVERLAP];
@@ -98,10 +67,16 @@ class VulkanEngine {
   void create_surface();
   void pick_physical_device();
   void create_logical_device();
+  void create_allocator();
   void create_swapchain();
   void create_image_views();
   void init_commands();
   void init_sync_structures();
+  void init_descriptors();
+  void init_pipelines();
+  void init_background_pipelines();
+
+  void draw_background(VkCommandBuffer cmd);
 
   void guide_init_vulkan();
   void guide_init_swapchain();

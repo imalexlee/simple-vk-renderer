@@ -10,6 +10,3 @@
 [submodule "thirdparty/glfw"]
 	path = thirdparty/glfw
 	url = https://github.com/glfw/glfw.git
-[submodule "thirdparty/vk-bootstrap"]
-	path = thirdparty/vk-bootstrap
-	url = https://github.com/charles-lunarg/vk-bootstrap.git
