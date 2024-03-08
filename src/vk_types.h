@@ -12,6 +12,7 @@
 
 // #include <vk_mem_alloc.h>
 
+#include "glm/ext/vector_float4.hpp"
 #include "vk_mem_alloc.h"
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
@@ -77,4 +78,18 @@ struct AllocatedImage {
   VmaAllocation allocation;
   VkExtent3D image_extent;
   VkFormat image_format;
+};
+
+struct ComputePushConstants {
+  glm::vec4 data1;
+  glm::vec4 data2;
+  glm::vec4 data3;
+  glm::vec4 data4;
+};
+
+struct ComputeEffect {
+  const char *name;
+  VkPipeline pipeline;
+  VkPipelineLayout pipeline_layout;
+  ComputePushConstants data;
 };

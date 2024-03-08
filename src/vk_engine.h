@@ -4,6 +4,7 @@
 #include "vk_mem_alloc.h"
 #include "vulkan/vulkan_core.h"
 #include <cstdint>
+#include <functional>
 #include <vk_types.h>
 
 constexpr static uint32_t FRAME_OVERLAP = 2;
@@ -44,6 +45,15 @@ class VulkanEngine {
   VkPipeline _gradient_pipeline;
   VkPipelineLayout _gradient_pipeline_layout;
 
+  // immediate submit structures
+  VkFence _imm_fence;
+  VkCommandBuffer _imm_cmd_buffer;
+  VkCommandPool _imm_cmd_pool;
+  VkDescriptorPool _imm_descriptor_pool = VK_NULL_HANDLE;
+
+  std::vector<ComputeEffect> _background_effects;
+  int32_t _current_background_effect{0};
+
   FrameData &get_current_frame() {
     return _frames[_frame_number % FRAME_OVERLAP];
   };
@@ -63,6 +73,9 @@ class VulkanEngine {
 
   VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR &capabilities);
 
+  void immediate_submit(std::function<void(VkCommandBuffer cmd)> &&function);
+  void draw_imgui(VkCommandBuffer cmd, VkImageView target_image_view);
+
   void create_instance();
   void create_surface();
   void pick_physical_device();
@@ -75,6 +88,7 @@ class VulkanEngine {
   void init_descriptors();
   void init_pipelines();
   void init_background_pipelines();
+  void init_imgui();
 
   void draw_background(VkCommandBuffer cmd);
 
