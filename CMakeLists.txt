@@ -3,10 +3,12 @@ cmake_minimum_required(VERSION 3.18)
 project(simple-vk-renderer)
 find_package(glfw3)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+# set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")
+# add_compile_options(-Wall -Wextra)
 
 add_executable(
   ${PROJECT_NAME} src/main.cpp src/vk_engine.cpp src/vk_initializers.cpp
@@ -17,6 +19,7 @@ if(APPLE)
 endif()
 
 add_subdirectory(thirdparty/fmt)
+add_subdirectory(thirdparty/VulkanMemoryAllocator)
 add_subdirectory(thirdparty)
 
 target_include_directories(
@@ -24,6 +27,7 @@ target_include_directories(
   PUBLIC src
   PUBLIC thirdparty/glm
   PUBLIC thirdparty/fmt/include
+  PUBLIC thirdparty/VulkanMemoryAllocator/include
   PUBLIC $ENV{VULKAN_SDK_PATH}/include)
 
 target_link_directories(
@@ -33,12 +37,15 @@ target_link_directories(
   PUBLIC
   thirdparty/fmt/src
   PUBLIC
+  thirdparty/VulkanMemoryAllocator/src
+  PUBLIC
   $ENV{VULKAN_SDK_PATH}/lib)
 
 target_link_libraries(
   ${PROJECT_NAME}
   PRIVATE glfw
   PRIVATE fmt
+  PRIVATE VulkanMemoryAllocator
   PRIVATE vulkan
   PRIVATE imgui)
 

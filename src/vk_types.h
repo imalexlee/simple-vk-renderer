@@ -12,6 +12,8 @@
 
 // #include <vk_mem_alloc.h>
 
+#include "glm/ext/matrix_float4x4.hpp"
+#include "glm/ext/vector_float3.hpp"
 #include "glm/ext/vector_float4.hpp"
 #include "vk_mem_alloc.h"
 #include <vulkan/vk_enum_string_helper.h>
@@ -35,7 +37,7 @@
 struct DeletionQueue {
   std::deque<std::function<void()>> deletors;
 
-  void push_function(std::function<void()> &&function) {
+  void push_function(std::function<void()>&& function) {
     deletors.push_back(function);
   }
 
@@ -88,8 +90,35 @@ struct ComputePushConstants {
 };
 
 struct ComputeEffect {
-  const char *name;
+  const char* name;
   VkPipeline pipeline;
   VkPipelineLayout pipeline_layout;
   ComputePushConstants data;
+};
+
+struct AllocatedBuffer {
+  VkBuffer buffer;
+  VmaAllocationInfo info;
+  VmaAllocation allocation;
+};
+
+struct Vertex {
+  glm::vec3 position;
+  float uv_x;
+  glm::vec3 normal;
+  float uv_y;
+  glm::vec4 color;
+};
+
+// resources for a mesh
+struct GPUMeshBuffers {
+  AllocatedBuffer index_buf;
+  AllocatedBuffer vertex_buf;
+  VkDeviceAddress vertex_buf_address;
+};
+
+// push constants for mesh drawing
+struct GPUDrawPushConstants {
+  glm::mat4 world_mat;
+  VkDeviceAddress vertex_buf_address;
 };
