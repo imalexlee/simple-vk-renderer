@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <vk_loader.h>
 #include <vk_types.h>
 
 constexpr static uint32_t FRAME_OVERLAP = 3;
@@ -38,6 +39,7 @@ class VulkanEngine {
 
   VmaAllocator _allocator;
   AllocatedImage _draw_image;
+  AllocatedImage _depth_image;
   VkExtent2D _draw_extent;
 
   DescriptorAllocator _global_descriptor_allocator;
@@ -62,6 +64,7 @@ class VulkanEngine {
   VkPipeline _mesh_pipeline;
 
   GPUMeshBuffers rectangle;
+  std::vector<std::shared_ptr<MeshAsset>> _test_meshes;
 
   FrameData& get_current_frame() {
     return _frames[_frame_number % FRAME_OVERLAP];
@@ -110,10 +113,10 @@ class VulkanEngine {
   AllocatedBuffer create_buffer(size_t alloc_size, VkBufferUsageFlags buf_usage,
                                 VmaMemoryUsage mem_usage);
   void destroy_buffer(const AllocatedBuffer& buffer);
-  GPUMeshBuffers upload_mesh(std::span<uint32_t> indices,
-                             std::span<Vertex> vertices);
 
 public:
+  GPUMeshBuffers upload_mesh(std::span<uint32_t> indices,
+                             std::span<Vertex> vertices);
   int _frame_number{0};
   VkExtent2D _window_extent{1700, 900};
 

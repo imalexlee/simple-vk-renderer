@@ -33,6 +33,7 @@ public:
   void set_blending();
   void set_color_attachment_formats(VkFormat format);
   void set_depth_format(VkFormat format);
-  void set_depth_test();
+  void disable_depth_test();
+  void set_depth_test(bool write_enabled, VkCompareOp compare_op);
   VkPipeline build_pipeline(VkDevice device);
 };

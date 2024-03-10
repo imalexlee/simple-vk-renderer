@@ -11,8 +11,14 @@ add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")
 # add_compile_options(-Wall -Wextra)
 
 add_executable(
-  ${PROJECT_NAME} src/main.cpp src/vk_engine.cpp src/vk_initializers.cpp
-                  src/vk_images.cpp src/vk_descriptors.cpp src/vk_pipelines.cpp)
+  ${PROJECT_NAME}
+  src/main.cpp
+  src/vk_engine.cpp
+  src/vk_initializers.cpp
+  src/vk_images.cpp
+  src/vk_descriptors.cpp
+  src/vk_pipelines.cpp
+  src/vk_loader.cpp)
 
 if(APPLE)
   enable_language(OBJC)
@@ -20,6 +26,7 @@ endif()
 
 add_subdirectory(thirdparty/fmt)
 add_subdirectory(thirdparty/VulkanMemoryAllocator)
+add_subdirectory(thirdparty/fastgltf)
 add_subdirectory(thirdparty)
 
 target_include_directories(
@@ -27,6 +34,8 @@ target_include_directories(
   PUBLIC src
   PUBLIC thirdparty/glm
   PUBLIC thirdparty/fmt/include
+  PUBLIC thirdparty/stb_image
+  PUBLIC thirdparty/fastgltf/include
   PUBLIC thirdparty/VulkanMemoryAllocator/include
   PUBLIC $ENV{VULKAN_SDK_PATH}/include)
 
@@ -37,6 +46,8 @@ target_link_directories(
   PUBLIC
   thirdparty/fmt/src
   PUBLIC
+  thirdparty/fastgltf/src
+  PUBLIC
   thirdparty/VulkanMemoryAllocator/src
   PUBLIC
   $ENV{VULKAN_SDK_PATH}/lib)
@@ -44,6 +55,7 @@ target_link_directories(
 target_link_libraries(
   ${PROJECT_NAME}
   PRIVATE glfw
+  PRIVATE fastgltf
   PRIVATE fmt
   PRIVATE VulkanMemoryAllocator
   PRIVATE vulkan
