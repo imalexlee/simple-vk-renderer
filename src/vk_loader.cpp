@@ -1,3 +1,4 @@
+#include "fmt/base.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #include "stb_image.h"
 #include <iostream>
@@ -126,6 +127,7 @@ load_gltf_meshes(VulkanEngine* engine, std::filesystem::path filePath) {
     constexpr bool OverrideColors = true;
     if (OverrideColors) {
       for (Vertex& vtx : vertices) {
+
         vtx.color = glm::vec4(vtx.normal, 1.f);
       }
     }

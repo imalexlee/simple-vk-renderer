@@ -20,7 +20,7 @@ VkDescriptorSetLayout
 DescriptorLayoutBuilder::build(VkDevice device,
                                VkShaderStageFlags shader_stages) {
 
-  for (auto &binding : bindings) {
+  for (auto& binding : bindings) {
     binding.stageFlags |= shader_stages;
   }
 
@@ -41,7 +41,7 @@ DescriptorLayoutBuilder::build(VkDevice device,
 void DescriptorAllocator::init_pool(VkDevice device, uint32_t max_sets,
                                     std::span<PoolSizeRatio> pool_ratios) {
   std::vector<VkDescriptorPoolSize> pool_sizes;
-  for (PoolSizeRatio ratio : pool_ratios) {
+  for (PoolSizeRatio& ratio : pool_ratios) {
     pool_sizes.push_back(VkDescriptorPoolSize{
         .type = ratio.type,
         .descriptorCount = uint32_t(ratio.ratio * max_sets)});

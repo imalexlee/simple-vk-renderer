@@ -153,7 +153,7 @@ void VulkanEngine::init() {
   glfwInit();
 
   glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+  glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
   _window = glfwCreateWindow(_window_extent.width, _window_extent.height,
                              "Vulkan window", nullptr, nullptr);
@@ -163,7 +163,7 @@ void VulkanEngine::init() {
   pick_physical_device();
   create_logical_device();
   create_allocator();
-  create_swapchain();
+  init_swapchain();
   create_image_views();
   init_commands();
   init_sync_structures();
@@ -555,7 +555,73 @@ void VulkanEngine::create_logical_device() {
   vkGetDeviceQueue(_device, _present_queue_family, 0, &_present_queue);
 };
 
-void VulkanEngine::create_swapchain() {
+void VulkanEngine::create_swapchain(uint32_t width, uint32_t height) {
+
+  SwapChainSupportDetails swap_chain_details =
+      query_swap_chain_support(_physical_device);
+  VkPresentModeKHR present_mode =
+      choose_present_mode(swap_chain_details.present_modes);
+  VkSurfaceFormatKHR surface_format =
+      choose_surface_format(swap_chain_details.formats);
+
+  uint32_t image_count = swap_chain_details.capabilities.minImageCount + 1;
+
+  if (swap_chain_details.capabilities.maxImageCount > 0 &&
+      image_count > swap_chain_details.capabilities.maxImageCount) {
+    image_count = swap_chain_details.capabilities.maxImageCount;
+  }
+  VkExtent2D extent = {width, height};
+  VkSwapchainCreateInfoKHR swap_chain_create_info{};
+  swap_chain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+  swap_chain_create_info.surface = _surface;
+  swap_chain_create_info.minImageCount = image_count;
+  swap_chain_create_info.imageExtent = extent;
+  swap_chain_create_info.imageArrayLayers = 1;
+  swap_chain_create_info.imageFormat = surface_format.format;
+  swap_chain_create_info.imageColorSpace = surface_format.colorSpace;
+
+  swap_chain_create_info.imageUsage =
+      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+  swap_chain_create_info.oldSwapchain = VK_NULL_HANDLE;
+
+  QueueFamilyIndices queue_family_indices =
+      find_queue_families(_physical_device);
+  uint32_t indices[]{queue_family_indices.graphics_family.value(),
+                     queue_family_indices.present_family.value()};
+
+  if (queue_family_indices.present_family.value() !=
+      queue_family_indices.graphics_family.value()) {
+    swap_chain_create_info.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+    swap_chain_create_info.queueFamilyIndexCount = 2;
+    swap_chain_create_info.pQueueFamilyIndices = indices;
+  } else {
+    swap_chain_create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    swap_chain_create_info.queueFamilyIndexCount = 0;
+    swap_chain_create_info.pQueueFamilyIndices = nullptr;
+  }
+  swap_chain_create_info.preTransform =
+      swap_chain_details.capabilities.currentTransform;
+  swap_chain_create_info.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+  swap_chain_create_info.presentMode = present_mode;
+  swap_chain_create_info.clipped = VK_TRUE;
+
+  VK_CHECK(vkCreateSwapchainKHR(_device, &swap_chain_create_info, nullptr,
+                                &_swap_chain));
+
+  VK_CHECK(
+      vkGetSwapchainImagesKHR(_device, _swap_chain, &image_count, nullptr));
+  _swap_chain_images.clear();
+  _swap_chain_images.resize(image_count);
+
+  VK_CHECK(vkGetSwapchainImagesKHR(_device, _swap_chain, &image_count,
+                                   _swap_chain_images.data()));
+  _swap_chain_format = surface_format.format;
+  _swap_chain_extent = extent;
+
+  create_image_views();
+}
+
+void VulkanEngine::init_swapchain() {
   SwapChainSupportDetails swap_chain_details =
       query_swap_chain_support(_physical_device);
 
@@ -673,7 +739,7 @@ void VulkanEngine::create_swapchain() {
     vkDestroyImageView(_device, _draw_image.image_view, nullptr);
     vmaDestroyImage(_allocator, _draw_image.image, _draw_image.allocation);
     vkDestroyImageView(_device, _depth_image.image_view, nullptr);
-    vmaDestroyImage(_allocator, _depth_image.image, _draw_image.allocation);
+    vmaDestroyImage(_allocator, _depth_image.image, _depth_image.allocation);
   });
 };
 
@@ -757,9 +823,18 @@ void VulkanEngine::init_sync_structures() {
 
   // _imm sync structures
   VK_CHECK(vkCreateFence(_device, &fence_create_info, nullptr, &_imm_fence));
-  _main_deletion_queue.push_function(
-      [=, this]() { vkDestroyFence(_device, _imm_fence, nullptr); });
 };
+
+void VulkanEngine::destroy_sync_structures() {
+  for (FrameData& frame_data : _frames) {
+
+    vkDestroyFence(_device, frame_data._render_fence, nullptr);
+    vkDestroySemaphore(_device, frame_data._render_semaphore, nullptr);
+    vkDestroySemaphore(_device, frame_data._swapchain_semaphore, nullptr);
+  }
+
+  vkDestroyFence(_device, _imm_fence, nullptr);
+}
 
 void VulkanEngine::init_descriptors() {
   std::vector<DescriptorAllocator::PoolSizeRatio> sizes{
@@ -774,6 +849,7 @@ void VulkanEngine::init_descriptors() {
         builder.build(_device, VK_SHADER_STAGE_COMPUTE_BIT);
   }
 
+  // allocate a set from the pool just created
   _draw_image_descriptors = _global_descriptor_allocator.allocate(
       _device, _draw_image_descriptor_layout);
 
@@ -790,10 +866,18 @@ void VulkanEngine::init_descriptors() {
   draw_image_write.pImageInfo = &image_info;
 
   vkUpdateDescriptorSets(_device, 1, &draw_image_write, 0, nullptr);
+
+  _main_deletion_queue.push_function(
+      [&]() { _global_descriptor_allocator.destroy_pool(_device); });
 }
 
 void VulkanEngine::init_pipelines() {
 
+  init_background_pipelines();
+  init_mesh_pipeline();
+}
+
+void VulkanEngine::init_background_pipelines() {
   VkShaderModule gradient_shader{};
   if (!vkutil::load_shader_module("../../shaders/gradient_color.comp.spv",
                                   _device, &gradient_shader)) {
@@ -867,14 +951,10 @@ void VulkanEngine::init_pipelines() {
   vkDestroyShaderModule(_device, gradient_shader, nullptr);
   vkDestroyShaderModule(_device, sky_shader, nullptr);
 
-  //  init_triangle_pipeline();
-  init_mesh_pipeline();
-
   _main_deletion_queue.push_function([=, this]() {
     vkDestroyPipelineLayout(_device, _gradient_pipeline_layout, nullptr);
     vkDestroyPipeline(_device, gradient.pipeline, nullptr);
     vkDestroyPipeline(_device, sky.pipeline, nullptr);
-    _global_descriptor_allocator.destroy_pool(_device);
   });
 }
 
@@ -911,7 +991,7 @@ void VulkanEngine::init_mesh_pipeline() {
   pipeline_builder.set_input_topology(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
   pipeline_builder.set_polygon_mode(VK_POLYGON_MODE_FILL);
   pipeline_builder.set_cull_mode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-  pipeline_builder.set_blending();
+  pipeline_builder.enable_blending_additive();
   pipeline_builder.set_color_attachment_formats(_draw_image.image_format);
   pipeline_builder.set_depth_format(_depth_image.image_format);
   pipeline_builder.set_depth_test(true, VK_COMPARE_OP_GREATER_OR_EQUAL);
@@ -926,52 +1006,6 @@ void VulkanEngine::init_mesh_pipeline() {
     vkDestroyPipeline(_device, _mesh_pipeline, nullptr);
   });
 }
-
-// void VulkanEngine::init_background_pipelines() {
-//   VkPipelineLayoutCreateInfo compute_layout{};
-//   compute_layout.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-//   compute_layout.pNext = nullptr;
-//   compute_layout.pSetLayouts = &_draw_image_descriptor_layout;
-//   compute_layout.setLayoutCount = 1;
-//
-//   VK_CHECK(vkCreatePipelineLayout(_device, &compute_layout, nullptr,
-//                                   &_gradient_pipeline_layout));
-//
-//   VkShaderModule compute_draw_shader{};
-//
-//   if (!vkutil::load_shader_module("../../shaders/gradient.comp.spv", _device,
-//                                   &compute_draw_shader)) {
-//     fmt::println("Error building compute shader");
-//   }
-//
-//   VkPipelineShaderStageCreateInfo stage_info{};
-//   stage_info.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-//   stage_info.pNext = nullptr;
-//   stage_info.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-//   stage_info.module = compute_draw_shader;
-//   stage_info.pName = "main";
-//
-//   VkComputePipelineCreateInfo compute_pipeline_create_info{};
-//   compute_pipeline_create_info.sType =
-//       VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
-//   compute_pipeline_create_info.pNext = nullptr;
-//   compute_pipeline_create_info.layout = _gradient_pipeline_layout;
-//   compute_pipeline_create_info.stage = stage_info;
-//
-//   VK_CHECK(vkCreateComputePipelines(_device, nullptr, 1,
-//                                     &compute_pipeline_create_info, nullptr,
-//                                     &_gradient_pipeline));
-//
-//   vkDestroyShaderModule(_device, compute_draw_shader, nullptr);
-//
-//   _main_deletion_queue.push_function([&]() {
-//     vkDestroyPipelineLayout(_device, _gradient_pipeline_layout, nullptr);
-//     vkDestroyPipeline(_device, _gradient_pipeline, nullptr);
-//     vkDestroyDescriptorSetLayout(_device, _draw_image_descriptor_layout,
-//                                  nullptr);
-//     _global_descriptor_allocator.destroy_pool(_device);
-//   });
-// }
 
 void VulkanEngine::init_imgui() {
   VkDescriptorPoolSize pool_sizes[] = {
@@ -1057,24 +1091,16 @@ void VulkanEngine::immediate_submit(
 };
 
 void VulkanEngine::cleanup() {
-
   _main_deletion_queue.flush();
   vkDestroyDescriptorSetLayout(_device, _draw_image_descriptor_layout, nullptr);
   vkDestroyDescriptorPool(_device, _imm_descriptor_pool, nullptr);
 
-  vkDestroySwapchainKHR(_device, _swap_chain, nullptr);
+  destroy_swapchain();
   for (FrameData& frame_data : _frames) {
     vkDestroyCommandPool(_device, frame_data.command_pool, nullptr);
-
-    vkDestroyFence(_device, frame_data._render_fence, nullptr);
-    vkDestroySemaphore(_device, frame_data._render_semaphore, nullptr);
-    vkDestroySemaphore(_device, frame_data._swapchain_semaphore, nullptr);
-
     frame_data.deletion_queue.flush();
   }
-  for (VkImageView& image_view : _swap_chain_image_views) {
-    vkDestroyImageView(_device, image_view, nullptr);
-  }
+  destroy_sync_structures();
   vkDestroyDevice(_device, nullptr);
   if (use_validation_layers) {
     DestroyDebugUtilsMessengerEXT(_instance, _debug_messenger, nullptr);
@@ -1090,6 +1116,10 @@ void VulkanEngine::cleanup() {
 void VulkanEngine::run() {
 
   while (!glfwWindowShouldClose(_window)) {
+
+    if (_resize_requested) {
+      resize_swapchain();
+    }
 
     ImGui_ImplVulkan_NewFrame();
 
@@ -1137,15 +1167,29 @@ void VulkanEngine::draw_imgui(VkCommandBuffer cmd,
 
 void VulkanEngine::draw() {
 
+  _draw_extent.height =
+      std::min(_swap_chain_extent.height, _draw_image.image_extent.height) *
+      _render_scale;
+
+  _draw_extent.width =
+      std::min(_swap_chain_extent.width, _draw_image.image_extent.width) *
+      _render_scale;
+
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._render_fence, true,
                            10000000000));
   get_current_frame().deletion_queue.flush();
-  VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._render_fence));
 
   uint32_t image_index{};
-  VK_CHECK(vkAcquireNextImageKHR(_device, _swap_chain, 10000000000,
-                                 get_current_frame()._swapchain_semaphore,
-                                 nullptr, &image_index));
+  VkResult result = vkAcquireNextImageKHR(
+      _device, _swap_chain, 10000000000,
+      get_current_frame()._swapchain_semaphore, nullptr, &image_index);
+
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+    _resize_requested = true;
+    return;
+  }
+
+  VK_CHECK(vkResetFences(_device, 1, &get_current_frame()._render_fence));
 
   VkCommandBuffer cmd = get_current_frame().main_command_buffer;
   VK_CHECK(vkResetCommandBuffer(cmd, 0));
@@ -1246,7 +1290,11 @@ void VulkanEngine::draw() {
   present_info.pWaitSemaphores = &get_current_frame()._render_semaphore;
   present_info.pNext = nullptr;
 
-  VK_CHECK(vkQueuePresentKHR(_graphics_queue, &present_info));
+  result = vkQueuePresentKHR(_graphics_queue, &present_info);
+  if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
+    _resize_requested = true;
+    return;
+  }
 
   ++_frame_number;
 }
@@ -1326,4 +1374,25 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   vkCmdDrawIndexed(cmd, _test_meshes[2]->surfaces[0].count, 1,
                    _test_meshes[2]->surfaces[0].startIndex, 0, 0);
   vkCmdEndRendering(cmd);
+}
+void VulkanEngine::destroy_swapchain() {
+  vkDestroySwapchainKHR(_device, _swap_chain, nullptr);
+  for (auto& image_view : _swap_chain_image_views) {
+    vkDestroyImageView(_device, image_view, nullptr);
+  }
+};
+void VulkanEngine::resize_swapchain() {
+  vkDeviceWaitIdle(_device);
+  destroy_swapchain();
+  destroy_sync_structures();
+  int w, h;
+  glfwGetWindowSize(_window, &w, &h);
+
+  _window_extent.width = w;
+  _window_extent.height = h;
+
+  create_swapchain(_window_extent.width, _window_extent.height);
+  init_sync_structures();
+
+  _resize_requested = false;
 }

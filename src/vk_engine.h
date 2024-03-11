@@ -12,12 +12,16 @@
 
 constexpr static uint32_t FRAME_OVERLAP = 3;
 
-class VulkanEngine {
+struct VulkanEngine {
+  VulkanEngine(){};
   VkInstance _instance;
   VkDebugUtilsMessengerEXT _debug_messenger;
 
   VkPhysicalDevice _physical_device = VK_NULL_HANDLE;
   VkDevice _device;
+
+  struct GLFWwindow* _window{nullptr};
+  bool _resize_requested{false};
 
   VkQueue _graphics_queue;
   DeletionQueue _main_deletion_queue;
@@ -41,6 +45,7 @@ class VulkanEngine {
   AllocatedImage _draw_image;
   AllocatedImage _depth_image;
   VkExtent2D _draw_extent;
+  float _render_scale = 1.f;
 
   DescriptorAllocator _global_descriptor_allocator;
   VkDescriptorSet _draw_image_descriptors;
@@ -78,7 +83,8 @@ class VulkanEngine {
   void pick_physical_device();
   void create_logical_device();
   void create_allocator();
-  void create_swapchain();
+  void init_swapchain();
+  void create_swapchain(uint32_t width, uint32_t height);
   void create_image_views();
   void init_commands();
   void init_sync_structures();
@@ -113,14 +119,15 @@ class VulkanEngine {
   AllocatedBuffer create_buffer(size_t alloc_size, VkBufferUsageFlags buf_usage,
                                 VmaMemoryUsage mem_usage);
   void destroy_buffer(const AllocatedBuffer& buffer);
+  void destroy_swapchain();
+  void destroy_sync_structures();
+  void resize_swapchain();
 
 public:
   GPUMeshBuffers upload_mesh(std::span<uint32_t> indices,
                              std::span<Vertex> vertices);
   int _frame_number{0};
   VkExtent2D _window_extent{1700, 900};
-
-  struct GLFWwindow* _window{nullptr};
 
   static VulkanEngine& Get();
 

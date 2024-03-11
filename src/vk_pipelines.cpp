@@ -1,7 +1,6 @@
 #include "fmt/base.h"
 #include "vulkan/vulkan_core.h"
 #include <array>
-#include <cassert>
 #include <cstdio>
 #include <fstream>
 #include <iostream>
@@ -162,13 +161,38 @@ void PipelineBuilder::set_multisampling() {
   _multisampling.alphaToOneEnable = VK_FALSE;
 }
 
-void PipelineBuilder::set_blending() {
+void PipelineBuilder::disable_blending() {
   _color_blend_attachment.colorWriteMask =
       VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
       VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
   _color_blend_attachment.blendEnable = VK_FALSE;
 }
 
+void PipelineBuilder::enable_blending_additive() {
+  _color_blend_attachment.colorWriteMask =
+      VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+  _color_blend_attachment.blendEnable = VK_TRUE;
+  _color_blend_attachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+  _color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+  _color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+  _color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+  _color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+  _color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+}
+void PipelineBuilder::enable_blending_alphablend() {
+  _color_blend_attachment.colorWriteMask =
+      VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+      VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+  _color_blend_attachment.blendEnable = VK_TRUE;
+  _color_blend_attachment.srcColorBlendFactor =
+      VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+  _color_blend_attachment.dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+  _color_blend_attachment.colorBlendOp = VK_BLEND_OP_ADD;
+  _color_blend_attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+  _color_blend_attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+  _color_blend_attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+}
 void PipelineBuilder::set_color_attachment_formats(VkFormat format) {
   _color_attachment_format = format;
   _render_info.pColorAttachmentFormats = &_color_attachment_format;
