@@ -187,9 +187,6 @@ void VulkanEngine::create_allocator() {
   allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
   VK_CHECK(vmaCreateAllocator(&allocatorInfo, &_allocator));
-
-  _main_deletion_queue.push_function(
-      [&]() { vmaDestroyAllocator(_allocator); });
 };
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t alloc_size,
@@ -853,19 +850,32 @@ void VulkanEngine::init_descriptors() {
   _draw_image_descriptors = _global_descriptor_allocator.allocate(
       _device, _draw_image_descriptor_layout);
 
-  VkDescriptorImageInfo image_info{};
-  image_info.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-  image_info.imageView = _draw_image.image_view;
+  DescriptorWriter desc_writer;
+  desc_writer.write_image(0, _draw_image.image_view, nullptr,
+                          VK_IMAGE_LAYOUT_GENERAL,
+                          VK_DESCRIPTOR_TYPE_STORAGE_IMAGE);
 
-  VkWriteDescriptorSet draw_image_write{};
-  draw_image_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-  draw_image_write.pNext = nullptr;
-  draw_image_write.dstSet = _draw_image_descriptors;
-  draw_image_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-  draw_image_write.descriptorCount = 1;
-  draw_image_write.pImageInfo = &image_info;
+  desc_writer.update_set(_device, _draw_image_descriptors);
 
-  vkUpdateDescriptorSets(_device, 1, &draw_image_write, 0, nullptr);
+  for (int i = 0; i < FRAME_OVERLAP; i++) {
+    std::vector<DescriptorAllocatorGrowable::PoolSizeRatio> frame_sizes = {
+        {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 3},
+        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4},
+    };
+
+    _frames[i].descriptor_allocator = DescriptorAllocatorGrowable{};
+    _frames[i].descriptor_allocator.init(_device, 1000, frame_sizes);
+
+    _main_deletion_queue.push_function(
+        [&, i]() { _frames[i].descriptor_allocator.destroy_pools(_device); });
+  }
+
+  DescriptorLayoutBuilder scene_desc_layout_builder;
+  scene_desc_layout_builder.add_binding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+  _gpu_scene_descriptor_layout = scene_desc_layout_builder.build(
+      _device, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT);
 
   _main_deletion_queue.push_function(
       [&]() { _global_descriptor_allocator.destroy_pool(_device); });
@@ -1092,14 +1102,18 @@ void VulkanEngine::immediate_submit(
 
 void VulkanEngine::cleanup() {
   _main_deletion_queue.flush();
+  vkDestroyDescriptorSetLayout(_device, _gpu_scene_descriptor_layout, nullptr);
   vkDestroyDescriptorSetLayout(_device, _draw_image_descriptor_layout, nullptr);
   vkDestroyDescriptorPool(_device, _imm_descriptor_pool, nullptr);
 
   destroy_swapchain();
+
   for (FrameData& frame_data : _frames) {
     vkDestroyCommandPool(_device, frame_data.command_pool, nullptr);
     frame_data.deletion_queue.flush();
   }
+  vmaDestroyAllocator(_allocator);
+
   destroy_sync_structures();
   vkDestroyDevice(_device, nullptr);
   if (use_validation_layers) {
@@ -1178,6 +1192,7 @@ void VulkanEngine::draw() {
   VK_CHECK(vkWaitForFences(_device, 1, &get_current_frame()._render_fence, true,
                            10000000000));
   get_current_frame().deletion_queue.flush();
+  get_current_frame().descriptor_allocator.clear_pools(_device);
 
   uint32_t image_index{};
   VkResult result = vkAcquireNextImageKHR(
@@ -1373,6 +1388,28 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
   vkCmdDrawIndexed(cmd, _test_meshes[2]->surfaces[0].count, 1,
                    _test_meshes[2]->surfaces[0].startIndex, 0, 0);
+
+  AllocatedBuffer gpu_scene_buffer =
+      create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+  get_current_frame().deletion_queue.push_function(
+      [=, this]() { destroy_buffer(gpu_scene_buffer); });
+
+  // write to uniform buffer
+  GPUSceneData* scene_uniform_data =
+      (GPUSceneData*)gpu_scene_buffer.allocation->GetMappedData();
+  *scene_uniform_data = _scene_data;
+
+  VkDescriptorSet globalDescriptor =
+      get_current_frame().descriptor_allocator.allocate(
+          _device, _gpu_scene_descriptor_layout);
+
+  DescriptorWriter writer;
+  writer.write_buffer(0, gpu_scene_buffer.buffer, sizeof(GPUSceneData), 0,
+                      VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+  writer.update_set(_device, globalDescriptor);
+
   vkCmdEndRendering(cmd);
 }
 void VulkanEngine::destroy_swapchain() {

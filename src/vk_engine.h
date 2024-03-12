@@ -40,6 +40,8 @@ struct VulkanEngine {
   std::vector<VkImageView> _swap_chain_image_views;
 
   std::array<FrameData, FRAME_OVERLAP> _frames{};
+  GPUSceneData _scene_data;
+  VkDescriptorSetLayout _gpu_scene_descriptor_layout;
 
   VmaAllocator _allocator;
   AllocatedImage _draw_image;

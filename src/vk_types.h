@@ -1,22 +1,17 @@
-
 #pragma once
 
-#include <array>
 #include <deque>
 #include <functional>
-#include <memory>
 #include <optional>
-#include <span>
-#include <string>
 #include <vector>
+#include <vk_descriptors.h>
 
-// #include <vk_mem_alloc.h>
-
-#include "fmt/base.h"
 #include "glm/ext/matrix_float4x4.hpp"
 #include "glm/ext/vector_float3.hpp"
 #include "glm/ext/vector_float4.hpp"
+#include "vk_descriptors.h"
 #include "vk_mem_alloc.h"
+#include <fmt/base.h>
 #include <vulkan/vk_enum_string_helper.h>
 #include <vulkan/vulkan.h>
 
@@ -73,6 +68,7 @@ struct FrameData {
   VkSemaphore _render_semaphore;
   VkFence _render_fence;
   DeletionQueue deletion_queue;
+  DescriptorAllocatorGrowable descriptor_allocator;
 };
 
 struct AllocatedImage {
@@ -122,4 +118,13 @@ struct GPUMeshBuffers {
 struct GPUDrawPushConstants {
   glm::mat4 world_mat;
   VkDeviceAddress vertex_buf_address;
+};
+
+struct GPUSceneData {
+  glm::mat4 view;
+  glm::mat4 proj;
+  glm::mat4 viewproj;
+  glm::vec4 ambient_color;
+  glm::vec4 sunlight_direction; // w for sun power
+  glm::vec4 sunlight_color;
 };
