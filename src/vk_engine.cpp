@@ -42,8 +42,9 @@ constexpr bool use_validation_layers = false;
 constexpr bool use_validation_layers = true;
 #endif
 
-constexpr std::array<const char*, 1> device_extensions{
+constexpr std::array<const char*, 2> device_extensions{
     //    "VK_KHR_portability_subset",
+    "VK_KHR_dynamic_rendering",
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 };
 
@@ -82,7 +83,7 @@ std::vector<const char*> get_required_extensions() {
   for (uint32_t i{0}; i < ext_count; ++i) {
     extensions.emplace_back(glfw_extensions[i]);
   }
-  // extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+  //  extensions.emplace_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
 
   if (use_validation_layers) {
     extensions.emplace_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -187,6 +188,45 @@ void VulkanEngine::create_allocator() {
   allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
 
   VK_CHECK(vmaCreateAllocator(&allocatorInfo, &_allocator));
+
+  // 3 default textures, white, grey, black. 1 pixel each
+  uint32_t white = 0xFFFFFFFF;
+  _white_image =
+      create_image((void*)&white, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+                   VK_IMAGE_USAGE_SAMPLED_BIT);
+
+  uint32_t grey = 0xAAAAAAFF;
+  _grey_image =
+      create_image((void*)&grey, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+                   VK_IMAGE_USAGE_SAMPLED_BIT);
+
+  uint32_t black = 0x000000FF;
+  _black_image =
+      create_image((void*)&black, VkExtent3D{1, 1, 1}, VK_FORMAT_R8G8B8A8_UNORM,
+                   VK_IMAGE_USAGE_SAMPLED_BIT);
+
+  // checkerboard image
+  uint32_t magenta = 0xFF00FFFF;
+  std::array<uint32_t, 16 * 16> pixels; // for 16x16 checkerboard texture
+  for (int x = 0; x < 16; x++) {
+    for (int y = 0; y < 16; y++) {
+      pixels[y * 16 + x] = ((x % 2) ^ (y % 2)) ? magenta : black;
+    }
+  }
+  _error_checkerboard_image =
+      create_image(pixels.data(), VkExtent3D{16, 16, 1},
+                   VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT);
+
+  VkSamplerCreateInfo sampl = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+
+  sampl.magFilter = VK_FILTER_NEAREST;
+  sampl.minFilter = VK_FILTER_NEAREST;
+
+  vkCreateSampler(_device, &sampl, nullptr, &_default_sampler_nearest);
+
+  sampl.magFilter = VK_FILTER_LINEAR;
+  sampl.minFilter = VK_FILTER_LINEAR;
+  vkCreateSampler(_device, &sampl, nullptr, &_default_sampler_linear);
 };
 
 AllocatedBuffer VulkanEngine::create_buffer(size_t alloc_size,
@@ -300,8 +340,8 @@ void VulkanEngine::create_instance() {
   VkInstanceCreateInfo instance_create_info{};
   instance_create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   instance_create_info.pApplicationInfo = &app_info;
-  //  instance_create_info.flags |=
-  //      VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+  // instance_create_info.flags |=
+  //    VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
   instance_create_info.enabledExtensionCount =
       static_cast<uint32_t>(extensions.size());
   instance_create_info.ppEnabledExtensionNames = extensions.data();
@@ -1432,4 +1472,96 @@ void VulkanEngine::resize_swapchain() {
   init_sync_structures();
 
   _resize_requested = false;
+}
+
+AllocatedImage VulkanEngine::create_image(VkExtent3D size, VkFormat format,
+                                          VkImageUsageFlags usage,
+                                          bool mipmapped) {
+  AllocatedImage newImage;
+  newImage.image_format = format;
+  newImage.image_extent = size;
+
+  VkImageCreateInfo img_info = vkinit::image_create_info(format, usage, size);
+  if (mipmapped) {
+    img_info.mipLevels = static_cast<uint32_t>(std::floor(
+                             std::log2(std::max(size.width, size.height)))) +
+                         1;
+  }
+
+  // always allocate images on dedicated GPU memory
+  VmaAllocationCreateInfo allocinfo = {};
+  allocinfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+  allocinfo.requiredFlags =
+      VkMemoryPropertyFlags(VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+  // allocate and create the image
+  VK_CHECK(vmaCreateImage(_allocator, &img_info, &allocinfo, &newImage.image,
+                          &newImage.allocation, nullptr));
+
+  // if the format is a depth format, we will need to have it use the correct
+  // aspect flag
+  VkImageAspectFlags aspectFlag = VK_IMAGE_ASPECT_COLOR_BIT;
+  if (format == VK_FORMAT_D32_SFLOAT) {
+    aspectFlag = VK_IMAGE_ASPECT_DEPTH_BIT;
+  }
+
+  // build a image-view for the image
+  VkImageViewCreateInfo view_info =
+      vkinit::imageview_create_info(format, newImage.image, aspectFlag);
+  view_info.subresourceRange.levelCount = img_info.mipLevels;
+
+  VK_CHECK(
+      vkCreateImageView(_device, &view_info, nullptr, &newImage.image_view));
+
+  return newImage;
+}
+
+AllocatedImage VulkanEngine::create_image(void* data, VkExtent3D size,
+                                          VkFormat format,
+                                          VkImageUsageFlags usage,
+                                          bool mipmapped) {
+  size_t data_size = size.depth * size.width * size.height * 4;
+  AllocatedBuffer uploadbuffer = create_buffer(
+      data_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
+
+  memcpy(uploadbuffer.info.pMappedData, data, data_size);
+
+  AllocatedImage new_image = create_image(
+      size, format,
+      usage | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+      mipmapped);
+
+  immediate_submit([&](VkCommandBuffer cmd) {
+    vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_UNDEFINED,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    VkBufferImageCopy copyRegion = {};
+    copyRegion.bufferOffset = 0;
+    copyRegion.bufferRowLength = 0;
+    copyRegion.bufferImageHeight = 0;
+
+    copyRegion.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.imageSubresource.mipLevel = 0;
+    copyRegion.imageSubresource.baseArrayLayer = 0;
+    copyRegion.imageSubresource.layerCount = 1;
+    copyRegion.imageExtent = size;
+
+    // copy the buffer into the image
+    vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image,
+                           VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
+                           &copyRegion);
+
+    vkutil::transition_image(cmd, new_image.image,
+                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  });
+
+  destroy_buffer(uploadbuffer);
+
+  return new_image;
+}
+
+void VulkanEngine::destroy_image(const AllocatedImage& img) {
+  vkDestroyImageView(_device, img.image_view, nullptr);
+  vmaDestroyImage(_allocator, img.image, img.allocation);
 }

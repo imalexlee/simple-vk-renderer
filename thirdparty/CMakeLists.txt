@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.18)
 
+find_package(Vulkan REQUIRED)
+
 set(IMGUI_PATH imgui)
 file(
   GLOB
@@ -23,4 +25,4 @@ file(
 
 add_library("imgui" STATIC ${IMGUI_GLOB})
 target_include_directories("imgui" PUBLIC ${IMGUI_PATH} ${IMGUI_PATH}/backends)
-target_link_libraries("imgui" PRIVATE glfw)
+target_link_libraries("imgui" PRIVATE glfw Vulkan::Vulkan)

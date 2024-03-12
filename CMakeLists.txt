@@ -2,13 +2,14 @@ cmake_minimum_required(VERSION 3.18)
 
 project(simple-vk-renderer)
 find_package(glfw3)
+find_package(Vulkan REQUIRED)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-# set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")
-# add_compile_options(-Wall -Wextra)
+if(UNIX AND NOT APPLE)
+  add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")
+endif()
 
 add_executable(
   ${PROJECT_NAME}
@@ -36,8 +37,8 @@ target_include_directories(
   PUBLIC thirdparty/fmt/include
   PUBLIC thirdparty/stb_image
   PUBLIC thirdparty/fastgltf/include
-  PUBLIC thirdparty/VulkanMemoryAllocator/include
-  PUBLIC $ENV{VULKAN_SDK_PATH}/include)
+  PUBLIC thirdparty/VulkanMemoryAllocator/include)
+# PUBLIC $ENV{VULKAN_SDK_PATH}/include
 
 target_link_directories(
   ${PROJECT_NAME}
@@ -48,9 +49,8 @@ target_link_directories(
   PUBLIC
   thirdparty/fastgltf/src
   PUBLIC
-  thirdparty/VulkanMemoryAllocator/src
-  PUBLIC
-  $ENV{VULKAN_SDK_PATH}/lib)
+  thirdparty/VulkanMemoryAllocator/src)
+# PUBLIC $ENV{VULKAN_SDK_PATH}/lib
 
 target_link_libraries(
   ${PROJECT_NAME}
@@ -58,7 +58,7 @@ target_link_libraries(
   PRIVATE fastgltf
   PRIVATE fmt
   PRIVATE VulkanMemoryAllocator
-  PRIVATE vulkan
+  PRIVATE Vulkan::Vulkan
   PRIVATE imgui)
 
 find_program(

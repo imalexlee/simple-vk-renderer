@@ -73,6 +73,14 @@ struct VulkanEngine {
   GPUMeshBuffers rectangle;
   std::vector<std::shared_ptr<MeshAsset>> _test_meshes;
 
+  AllocatedImage _white_image;
+  AllocatedImage _black_image;
+  AllocatedImage _grey_image;
+  AllocatedImage _error_checkerboard_image;
+
+  VkSampler _default_sampler_linear;
+  VkSampler _default_sampler_nearest;
+
   FrameData& get_current_frame() {
     return _frames[_frame_number % FRAME_OVERLAP];
   };
@@ -120,7 +128,13 @@ struct VulkanEngine {
   void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
   AllocatedBuffer create_buffer(size_t alloc_size, VkBufferUsageFlags buf_usage,
                                 VmaMemoryUsage mem_usage);
+  AllocatedImage create_image(VkExtent3D size, VkFormat format,
+                              VkImageUsageFlags usage, bool mipmapped = false);
+  AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format,
+                              VkImageUsageFlags usage, bool mipmapped = false);
   void destroy_buffer(const AllocatedBuffer& buffer);
+  void destroy_image(const AllocatedImage& img);
+
   void destroy_swapchain();
   void destroy_sync_structures();
   void resize_swapchain();
