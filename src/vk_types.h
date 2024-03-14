@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <optional>
@@ -127,4 +128,31 @@ struct GPUSceneData {
   glm::vec4 ambient_color;
   glm::vec4 sunlight_direction; // w for sun power
   glm::vec4 sunlight_color;
+};
+
+enum class MaterialPass : uint8_t {
+  MainColor,
+  Transparent,
+  Other,
+};
+
+struct MaterialPipeline {
+  VkPipeline pipeline;
+  VkPipelineLayout layout;
+};
+
+struct MaterialInstance {
+  MaterialPipeline* pipeline;
+  VkDescriptorSet materialSet;
+  MaterialPass passType;
+};
+
+struct RenderObject {
+  uint32_t index_count;
+  uint32_t first_index;
+  VkBuffer index_buffer;
+
+  MaterialInstance* material;
+  glm::mat4 transform;
+  VkDeviceAddress vertex_buf_addr;
 };
