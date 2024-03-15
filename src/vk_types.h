@@ -143,8 +143,8 @@ struct MaterialPipeline {
 
 struct MaterialInstance {
   MaterialPipeline* pipeline;
-  VkDescriptorSet materialSet;
-  MaterialPass passType;
+  VkDescriptorSet material_desc_set;
+  MaterialPass pass_type;
 };
 
 struct RenderObject {

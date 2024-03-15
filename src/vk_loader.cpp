@@ -1,11 +1,11 @@
-#include "fmt/base.h"
+
 #define GLM_ENABLE_EXPERIMENTAL
+#include "fmt/base.h"
 #include "stb_image.h"
 #include <iostream>
 #include <vk_loader.h>
 
 #include "vk_engine.h"
-#include "vk_initializers.h"
 #include "vk_types.h"
 #include <glm/gtx/quaternion.hpp>
 
@@ -127,7 +127,6 @@ load_gltf_meshes(VulkanEngine* engine, std::filesystem::path filePath) {
     constexpr bool OverrideColors = true;
     if (OverrideColors) {
       for (Vertex& vtx : vertices) {
-
         vtx.color = glm::vec4(vtx.normal, 1.f);
       }
     }

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.18)
+cmake_minimum_required(VERSION 3.22)
 
 project(simple-vk-renderer)
 find_package(glfw3)
@@ -6,6 +6,7 @@ find_package(Vulkan REQUIRED)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+# set(CMAKE_CXX_COMPILER "/usr/bin/g++-11")
 
 if(UNIX AND NOT APPLE)
   add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")
@@ -20,6 +21,8 @@ add_executable(
   src/vk_descriptors.cpp
   src/vk_pipelines.cpp
   src/vk_loader.cpp)
+
+# target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 if(APPLE)
   enable_language(OBJC)

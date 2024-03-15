@@ -2,6 +2,7 @@
 
 layout (location = 0) out vec3 outColor;
 
+
 void main() 
 {
 	//const array of positions for the triangle

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "glm/ext/vector_float4.hpp"
 #include "vk_descriptors.h"
 #include "vk_mem_alloc.h"
 #include "vulkan/vulkan_core.h"
@@ -9,6 +10,38 @@
 #include <span>
 #include <vk_loader.h>
 #include <vk_types.h>
+
+struct GLTFMettallicRoughness {
+  MaterialPipeline opaque_pipeline;
+  MaterialPipeline transparent_pipeline;
+
+  VkDescriptorSetLayout material_desc_layout;
+
+  struct MaterialConstants {
+    glm::vec4 color_factors;
+    glm::vec4 metal_rough_factors;
+    // padding
+    glm::vec4 extra;
+  };
+
+  struct MaterialResources {
+    AllocatedImage color_image;
+    VkSampler color_sampler;
+    AllocatedImage metal_rough_image;
+    VkSampler metal_rough_sampler;
+    VkBuffer data_buffer;
+    uint32_t data_buffer_offset;
+  };
+
+  DescriptorWriter desc_writer;
+
+  void build_pipelines(VulkanEngine* engine);
+  void clear_resources(VkDevice device);
+
+  MaterialInstance
+  write_material(VkDevice device, MaterialPass pass, const MaterialResources&,
+                 DescriptorAllocatorGrowable& descriptor_allocator);
+};
 
 constexpr static uint32_t FRAME_OVERLAP = 3;
 
@@ -82,6 +115,9 @@ struct VulkanEngine {
   VkSampler _default_sampler_nearest;
 
   VkDescriptorSetLayout _single_image_desc_layout;
+
+  MaterialInstance default_data;
+  GLTFMettallicRoughness metal_rough_material;
 
   FrameData& get_current_frame() {
     return _frames[_frame_number % FRAME_OVERLAP];
