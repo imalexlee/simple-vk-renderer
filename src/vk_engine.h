@@ -11,6 +11,25 @@
 #include <vk_loader.h>
 #include <vk_types.h>
 
+struct MeshNode : public Node {
+  std::shared_ptr<MeshAsset> mesh;
+  virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
+};
+
+struct RenderObject {
+  uint32_t index_count;
+  uint32_t first_index;
+  VkBuffer index_buffer;
+
+  MaterialInstance* material;
+  glm::mat4 transform;
+  VkDeviceAddress vertex_buf_addr;
+};
+
+struct DrawContext {
+  std::vector<RenderObject> opaque_surfaces;
+};
+
 struct GLTFMettallicRoughness {
   MaterialPipeline opaque_pipeline;
   MaterialPipeline transparent_pipeline;
@@ -38,9 +57,8 @@ struct GLTFMettallicRoughness {
   void build_pipelines(VulkanEngine* engine);
   void clear_resources(VkDevice device);
 
-  MaterialInstance
-  write_material(VkDevice device, MaterialPass pass, const MaterialResources&,
-                 DescriptorAllocatorGrowable& descriptor_allocator);
+  MaterialInstance write_material(VkDevice device, MaterialPass pass, const MaterialResources&,
+                                  DescriptorAllocatorGrowable& descriptor_allocator);
 };
 
 constexpr static uint32_t FRAME_OVERLAP = 3;
@@ -119,9 +137,7 @@ struct VulkanEngine {
   MaterialInstance default_data;
   GLTFMettallicRoughness metal_rough_material;
 
-  FrameData& get_current_frame() {
-    return _frames[_frame_number % FRAME_OVERLAP];
-  };
+  FrameData& get_current_frame() { return _frames[_frame_number % FRAME_OVERLAP]; };
 
   // initializers
   void setup_debug_messenger();
@@ -152,24 +168,20 @@ struct VulkanEngine {
   void draw_imgui(VkCommandBuffer cmd, VkImageView target_image_view);
 
   // utils
-  static VKAPI_ATTR VkBool32 VKAPI_CALL
-  debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                 VkDebugUtilsMessageTypeFlagsEXT messageType,
-                 const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                 void* pUserData);
+  static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+                                                       VkDebugUtilsMessageTypeFlagsEXT messageType,
+                                                       const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+                                                       void* pUserData);
 
   bool is_device_suitable(VkPhysicalDevice physical_device);
   QueueFamilyIndices find_queue_families(VkPhysicalDevice physical_device);
-  SwapChainSupportDetails
-  query_swap_chain_support(VkPhysicalDevice physical_device);
+  SwapChainSupportDetails query_swap_chain_support(VkPhysicalDevice physical_device);
   VkExtent2D choose_swap_extent(const VkSurfaceCapabilitiesKHR& capabilities);
   void immediate_submit(std::function<void(VkCommandBuffer cmd)>&& function);
-  AllocatedBuffer create_buffer(size_t alloc_size, VkBufferUsageFlags buf_usage,
-                                VmaMemoryUsage mem_usage);
-  AllocatedImage create_image(VkExtent3D size, VkFormat format,
-                              VkImageUsageFlags usage, bool mipmapped = false);
-  AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format,
-                              VkImageUsageFlags usage, bool mipmapped = false);
+  AllocatedBuffer create_buffer(size_t alloc_size, VkBufferUsageFlags buf_usage, VmaMemoryUsage mem_usage);
+  AllocatedImage create_image(VkExtent3D size, VkFormat format, VkImageUsageFlags usage, bool mipmapped = false);
+  AllocatedImage create_image(void* data, VkExtent3D size, VkFormat format, VkImageUsageFlags usage,
+                              bool mipmapped = false);
   void destroy_buffer(const AllocatedBuffer& buffer);
   void destroy_image(const AllocatedImage& img);
 
@@ -178,8 +190,7 @@ struct VulkanEngine {
   void resize_swapchain();
 
 public:
-  GPUMeshBuffers upload_mesh(std::span<uint32_t> indices,
-                             std::span<Vertex> vertices);
+  GPUMeshBuffers upload_mesh(std::span<uint32_t> indices, std::span<Vertex> vertices);
   int _frame_number{0};
   VkExtent2D _window_extent{1700, 900};
 

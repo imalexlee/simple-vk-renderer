@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <deque>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 #include <vk_descriptors.h>
@@ -22,21 +23,19 @@
 #include <glm/vec4.hpp>
 #include <vulkan/vulkan_core.h>
 
-#define VK_CHECK(x)                                                            \
-  do {                                                                         \
-    VkResult err = x;                                                          \
-    if (err) {                                                                 \
-      fmt::println("Detected Vulkan error: {}", string_VkResult(err));         \
-      abort();                                                                 \
-    }                                                                          \
+#define VK_CHECK(x)                                                                                                    \
+  do {                                                                                                                 \
+    VkResult err = x;                                                                                                  \
+    if (err) {                                                                                                         \
+      fmt::println("Detected Vulkan error: {}", string_VkResult(err));                                                 \
+      abort();                                                                                                         \
+    }                                                                                                                  \
   } while (0)
 
 struct DeletionQueue {
   std::deque<std::function<void()>> deletors;
 
-  void push_function(std::function<void()>&& function) {
-    deletors.push_back(function);
-  }
+  void push_function(std::function<void()>&& function) { deletors.push_back(function); }
 
   void flush() {
     // reverse iterate the deletion queue to execute all the functions
@@ -51,9 +50,7 @@ struct DeletionQueue {
 struct QueueFamilyIndices {
   std::optional<uint32_t> graphics_family;
   std::optional<uint32_t> present_family;
-  bool is_complete() {
-    return graphics_family.has_value() && present_family.has_value();
-  }
+  bool is_complete() { return graphics_family.has_value() && present_family.has_value(); }
 };
 
 struct SwapChainSupportDetails {
@@ -147,12 +144,30 @@ struct MaterialInstance {
   MaterialPass pass_type;
 };
 
-struct RenderObject {
-  uint32_t index_count;
-  uint32_t first_index;
-  VkBuffer index_buffer;
+struct DrawContext;
 
-  MaterialInstance* material;
-  glm::mat4 transform;
-  VkDeviceAddress vertex_buf_addr;
+class IRenderable {
+  virtual void Draw(const glm::mat4& top_matrix, DrawContext& ctx) = 0;
+};
+
+struct Node : public IRenderable {
+  std::weak_ptr<Node> parent;
+  std::vector<std::shared_ptr<Node>> children;
+
+  glm::mat4 local_transform;
+  glm::mat4 world_transform;
+
+  void refresh_transform(const glm::mat4& parent_matrix) {
+    world_transform = parent_matrix * local_transform;
+
+    for (auto& c : children) {
+      c->refresh_transform(parent_matrix);
+    }
+  }
+
+  void Draw(const glm::mat4& top_matrix, DrawContext& ctx) {
+    for (auto& c : children) {
+      c->Draw(top_matrix, ctx);
+    }
+  }
 };

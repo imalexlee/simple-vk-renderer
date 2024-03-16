@@ -5,8 +5,7 @@
 #include <vk_initializers.h>
 
 namespace vkutil {
-  bool load_shader_module(const char* filePath, VkDevice device,
-                          VkShaderModule* outShaderModule);
+  bool load_shader_module(const char* filePath, VkDevice device, VkShaderModule* outShaderModule);
 } // namespace vkutil
 
 class PipelineBuilder {

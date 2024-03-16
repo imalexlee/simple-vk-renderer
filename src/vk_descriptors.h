@@ -10,8 +10,7 @@ struct DescriptorLayoutBuilder {
   std::vector<VkDescriptorSetLayoutBinding> bindings;
   void add_binding(uint32_t binding, VkDescriptorType type);
   void clear();
-  VkDescriptorSetLayout build(VkDevice device,
-                              VkShaderStageFlags shader_stages);
+  VkDescriptorSetLayout build(VkDevice device, VkShaderStageFlags shader_stages);
 };
 
 struct DescriptorAllocator {
@@ -21,8 +20,7 @@ struct DescriptorAllocator {
   };
 
   VkDescriptorPool pool;
-  void init_pool(VkDevice device, uint32_t max_sets,
-                 std::span<PoolSizeRatio> pool_ratios);
+  void init_pool(VkDevice device, uint32_t max_sets, std::span<PoolSizeRatio> pool_ratios);
   void clear_descriptors(VkDevice device);
   void destroy_pool(VkDevice device);
 
@@ -36,8 +34,7 @@ public:
     float ratio;
   };
 
-  void init(VkDevice device, uint32_t initialSets,
-            std::span<PoolSizeRatio> poolRatios);
+  void init(VkDevice device, uint32_t initialSets, std::span<PoolSizeRatio> poolRatios);
   void clear_pools(VkDevice device);
   void destroy_pools(VkDevice device);
 
@@ -45,8 +42,7 @@ public:
 
 private:
   VkDescriptorPool get_pool(VkDevice device);
-  VkDescriptorPool create_pool(VkDevice device, uint32_t setCount,
-                               std::span<PoolSizeRatio> poolRatios);
+  VkDescriptorPool create_pool(VkDevice device, uint32_t setCount, std::span<PoolSizeRatio> poolRatios);
 
   std::vector<PoolSizeRatio> ratios;
   std::vector<VkDescriptorPool> fullPools;
@@ -55,10 +51,8 @@ private:
 };
 
 struct DescriptorWriter {
-  void write_image(int binding, VkImageView image, VkSampler sampler,
-                   VkImageLayout layout, VkDescriptorType type);
-  void write_buffer(int binding, VkBuffer buffer, size_t size, size_t offset,
-                    VkDescriptorType type);
+  void write_image(int binding, VkImageView image, VkSampler sampler, VkImageLayout layout, VkDescriptorType type);
+  void write_buffer(int binding, VkBuffer buffer, size_t size, size_t offset, VkDescriptorType type);
 
   void clear();
   void update_set(VkDevice device, VkDescriptorSet set);
