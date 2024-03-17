@@ -8,9 +8,6 @@
 #include <vector>
 #include <vk_descriptors.h>
 
-#include "glm/ext/matrix_float4x4.hpp"
-#include "glm/ext/vector_float3.hpp"
-#include "glm/ext/vector_float4.hpp"
 #include "vk_descriptors.h"
 #include "vk_mem_alloc.h"
 #include <fmt/base.h>

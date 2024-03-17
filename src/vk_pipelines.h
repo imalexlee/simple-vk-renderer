@@ -28,7 +28,7 @@ public:
   void set_input_topology(VkPrimitiveTopology topology);
   void set_polygon_mode(VkPolygonMode poly_mode);
   void set_cull_mode(VkCullModeFlags cull_mode, VkFrontFace front_face);
-  void set_multisampling();
+  void set_multisampling(VkSampleCountFlagBits samples);
   void disable_blending();
   void enable_blending_additive();
   void enable_blending_alphablend();

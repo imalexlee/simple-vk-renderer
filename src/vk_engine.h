@@ -4,10 +4,12 @@
 #include "vk_descriptors.h"
 #include "vk_mem_alloc.h"
 #include "vulkan/vulkan_core.h"
+#include <camera.h>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <span>
+#include <string>
 #include <vk_loader.h>
 #include <vk_types.h>
 
@@ -35,12 +37,13 @@ struct GLTFMettallicRoughness {
   MaterialPipeline transparent_pipeline;
 
   VkDescriptorSetLayout material_desc_layout;
+  DeletionQueue _deletion_queue;
 
   struct MaterialConstants {
     glm::vec4 color_factors;
     glm::vec4 metal_rough_factors;
     // padding
-    glm::vec4 extra;
+    glm::vec4 extra[14];
   };
 
   struct MaterialResources {
@@ -71,6 +74,11 @@ struct VulkanEngine {
   VkPhysicalDevice _physical_device = VK_NULL_HANDLE;
   VkDevice _device;
 
+  Camera _main_camera;
+
+  DrawContext _main_draw_context;
+  std::unordered_map<std::string, std::shared_ptr<Node>> _loaded_nodes;
+
   struct GLFWwindow* _window{nullptr};
   bool _resize_requested{false};
 
@@ -100,7 +108,7 @@ struct VulkanEngine {
   VkExtent2D _draw_extent;
   float _render_scale = 1.f;
 
-  DescriptorAllocator _global_descriptor_allocator;
+  DescriptorAllocatorGrowable _global_descriptor_allocator;
   VkDescriptorSet _draw_image_descriptors;
   VkDescriptorSetLayout _draw_image_descriptor_layout;
 
@@ -114,7 +122,7 @@ struct VulkanEngine {
   VkDescriptorPool _imm_descriptor_pool = VK_NULL_HANDLE;
 
   std::vector<ComputeEffect> _background_effects;
-  int32_t _current_background_effect{0};
+  int32_t _current_background_effect{1};
 
   VkPipelineLayout _triangle_pipeline_layout;
   VkPipeline _triangle_pipeline;
@@ -142,6 +150,7 @@ struct VulkanEngine {
   // initializers
   void setup_debug_messenger();
   void populate_debug_info(VkDebugUtilsMessengerCreateInfoEXT& create_info);
+  void init_glfw();
   void create_instance();
   void create_surface();
   void pick_physical_device();
@@ -157,6 +166,7 @@ struct VulkanEngine {
   void init_background_pipelines();
   void init_imgui();
   void init_default_data();
+  void init_camera();
 
   // pipeline functions
   void init_triangle_pipeline();
@@ -166,6 +176,8 @@ struct VulkanEngine {
   void draw_background(VkCommandBuffer cmd);
   void draw_geometry(VkCommandBuffer cmd);
   void draw_imgui(VkCommandBuffer cmd, VkImageView target_image_view);
+
+  void update_scene();
 
   // utils
   static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,

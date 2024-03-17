@@ -1,5 +1,6 @@
 
 #include <vk_initializers.h>
+#include <vulkan/vulkan_core.h>
 
 //> init_cmd
 VkCommandPoolCreateInfo vkinit::command_pool_create_info(uint32_t queueFamilyIndex,
@@ -136,7 +137,6 @@ vkinit::depth_attachment_info(VkImageView view, VkImageLayout layout /*= VK_IMAG
   VkRenderingAttachmentInfo depthAttachment{};
   depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
   depthAttachment.pNext = nullptr;
-
   depthAttachment.imageView = view;
   depthAttachment.imageLayout = layout;
   depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
@@ -240,7 +240,8 @@ VkDescriptorBufferInfo vkinit::buffer_info(VkBuffer buffer, VkDeviceSize offset,
 }
 
 //> image_set
-VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent) {
+VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent,
+                                            VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) {
   VkImageCreateInfo info = {};
   info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
   info.pNext = nullptr;
@@ -255,7 +256,7 @@ VkImageCreateInfo vkinit::image_create_info(VkFormat format, VkImageUsageFlags u
 
   // for MSAA. we will not be using it by default, so default it to 1 sample per
   // pixel.
-  info.samples = VK_SAMPLE_COUNT_1_BIT;
+  info.samples = samples;
 
   // optimal tiling, which means the image is stored on the best gpu format
   info.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -271,6 +272,7 @@ VkImageViewCreateInfo vkinit::imageview_create_info(VkFormat format, VkImage ima
   info.pNext = nullptr;
 
   info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+
   info.image = image;
   info.format = format;
   info.subresourceRange.baseMipLevel = 0;

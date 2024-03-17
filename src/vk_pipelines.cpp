@@ -138,9 +138,9 @@ void PipelineBuilder::set_cull_mode(VkCullModeFlags cull_mode, VkFrontFace front
   _rasterizer.frontFace = front_face;
 }
 
-void PipelineBuilder::set_multisampling() {
+void PipelineBuilder::set_multisampling(VkSampleCountFlagBits samples) {
 
-  _multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+  _multisampling.rasterizationSamples = samples;
   _multisampling.sampleShadingEnable = VK_FALSE;
   _multisampling.minSampleShading = 1.0f;
   _multisampling.pSampleMask = nullptr;
