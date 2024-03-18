@@ -21,7 +21,14 @@ add_executable(
   src/vk_descriptors.cpp
   src/vk_pipelines.cpp
   src/camera.cpp
-  src/vk_loader.cpp)
+  src/vk_loader.cpp
+  src/vk_engine.h
+  src/vk_initializers.h
+  src/vk_images.h
+  src/vk_descriptors.h
+  src/vk_pipelines.h
+  src/camera.h
+  src/vk_loader.h)
 
 # target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 

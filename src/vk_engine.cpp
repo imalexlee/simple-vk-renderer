@@ -159,12 +159,19 @@ void VulkanEngine::init() {
 
   init_default_data();
   init_camera();
+
+  std::string structure_path = "../../assets/structure.glb";
+  auto structure_file = load_gltf_meshes(this, structure_path);
+  assert(structure_file.has_value());
+
+  _loaded_scenes["structure"] = *structure_file;
 }
 
 void VulkanEngine::init_camera() {
   _main_camera = Camera(_window);
-  Camera::velocity = glm::vec3(0, 0, 0);
-  Camera::position = glm::vec3(0, 0, 5);
+  _main_camera.velocity = glm::vec3(0, 0, 0);
+  _main_camera.position = glm::vec3(30.f, 0, -85.f);
+  //_main_camera.position = glm::vec3(0, 0, 5);
   _main_camera.pitch = 0.f;
   _main_camera.yaw = 0.f;
 }
@@ -185,7 +192,7 @@ void VulkanEngine::init_glfw() {
 
 void VulkanEngine::init_default_data() {
 
-  _test_meshes = load_gltf_meshes(this, "../../assets/basicmesh.glb").value();
+  //_test_meshes = load_gltf_meshes(this, "../../assets/basicmesh.glb").value();
 
   // 3 default textures, white, grey, black. 1 pixel each
   uint32_t white = __builtin_bswap32(0xFFFFFFFF);
@@ -242,18 +249,18 @@ void VulkanEngine::init_default_data() {
   default_data = metal_rough_material.write_material(_device, MaterialPass::MainColor, material_resources,
                                                      _global_descriptor_allocator);
 
-  for (auto& m : _test_meshes) {
-    std::shared_ptr<MeshNode> new_node = std::make_shared<MeshNode>();
-    new_node->mesh = m;
-    new_node->local_transform = glm::mat4{1.f};
-    new_node->world_transform = glm::mat4{1.f};
+  // for (auto& m : _test_meshes) {
+  //   std::shared_ptr<MeshNode> new_node = std::make_shared<MeshNode>();
+  //   new_node->mesh = m;
+  //   new_node->local_transform = glm::mat4{1.f};
+  //   new_node->world_transform = glm::mat4{1.f};
 
-    for (auto& s : new_node->mesh->surfaces) {
-      // s.material = std::make_shared<GLTFMaterial>(GLTFMaterial{.data = default_data});
-      s.material = std::make_shared<GLTFMaterial>(default_data);
-    }
-    _loaded_nodes[m->name] = std::move(new_node);
-  }
+  //   for (auto& s : new_node->mesh->surfaces) {
+  //     // s.material = std::make_shared<GLTFMaterial>(GLTFMaterial{.data = default_data});
+  //     s.material = std::make_shared<GLTFMaterial>(default_data);
+  //   }
+  //   _loaded_nodes[m->name] = std::move(new_node);
+  // }
 
   _main_deletion_queue.push_function([&]() {
     destroy_image(_white_image);
@@ -1091,6 +1098,7 @@ void VulkanEngine::immediate_submit(std::function<void(VkCommandBuffer cmd)>&& f
 void VulkanEngine::cleanup() {
   _main_deletion_queue.flush();
   metal_rough_material._deletion_queue.flush();
+  _loaded_scenes.clear();
   vkDestroyDescriptorSetLayout(_device, _gpu_scene_descriptor_layout, nullptr);
   vkDestroyDescriptorSetLayout(_device, _draw_image_descriptor_layout, nullptr);
   vkDestroyDescriptorSetLayout(_device, _single_image_desc_layout, nullptr);
@@ -1374,14 +1382,12 @@ void VulkanEngine::update_scene() {
   _main_draw_context.opaque_surfaces.clear();
 
   _main_camera.update();
-  // fmt::print("x: {}", _main_camera.velocity.x);
-  // fmt::print("y: {}", _main_camera.velocity.y);
-  // fmt::println("z: {}", _main_camera.velocity.z);
   _scene_data.view = _main_camera.get_view_matrix();
 
   glm::mat4 rotate = glm::rotate(glm::mat4(1.f), glm::radians((float)_frame_number), glm::vec3{0, 1, 0});
 
-  _loaded_nodes["Suzanne"]->Draw(rotate, _main_draw_context);
+  //  _loaded_nodes["Suzanne"]->Draw(rotate, _main_draw_context);
+  _loaded_scenes["structure"]->Draw(glm::mat4{1.f}, _main_draw_context);
 
   _scene_data.proj =
       glm::perspective(glm::radians(70.f), (float)_window_extent.width / (float)_window_extent.height, 10000.f, 0.1f);
@@ -1391,13 +1397,13 @@ void VulkanEngine::update_scene() {
   _scene_data.sunlight_color = glm::vec4(1.f);
   _scene_data.sunlight_direction = glm::vec4{0, 1, 0.5, 1.f};
 
-  for (int x = -3; x < 3; x++) {
-
-    glm::mat4 scale = glm::scale(glm::vec3{0.8});
-    glm::mat4 translation = glm::translate(glm::vec3{x * 4, 1, -10});
-
-    _loaded_nodes["Cube"]->Draw(translation * scale, _main_draw_context);
-  }
+  //  for (int x = -3; x < 3; x++) {
+  //
+  //    glm::mat4 scale = glm::scale(glm::vec3{0.8});
+  //    glm::mat4 translation = glm::translate(glm::vec3{x * 4, 1, -10});
+  //
+  //    _loaded_nodes["Cube"]->Draw(translation * scale, _main_draw_context);
+  //  }
 }
 
 void VulkanEngine::destroy_swapchain() {

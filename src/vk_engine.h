@@ -78,6 +78,7 @@ struct VulkanEngine {
 
   DrawContext _main_draw_context;
   std::unordered_map<std::string, std::shared_ptr<Node>> _loaded_nodes;
+  std::unordered_map<std::string, std::shared_ptr<LoadedGLTF>> _loaded_scenes;
 
   struct GLFWwindow* _window{nullptr};
   bool _resize_requested{false};

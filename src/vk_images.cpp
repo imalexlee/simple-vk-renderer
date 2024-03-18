@@ -1,6 +1,4 @@
 #include "vk_images.h"
-#include "vulkan/vulkan_core.h"
-
 #include <vk_initializers.h>
 
 void vkutil::transition_image(VkCommandBuffer cmd, VkImage image, VkImageLayout currentLayout,
