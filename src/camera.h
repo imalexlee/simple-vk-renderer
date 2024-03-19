@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <vk_types.h>
 
-constexpr float CAMERA_SPEED = 0.3f;
+constexpr float CAMERA_SPEED = 0.8f;
 
 class Camera {
 public:

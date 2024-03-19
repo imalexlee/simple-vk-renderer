@@ -6,6 +6,11 @@
 
 #include "vk_engine.h"
 #include "vk_types.h"
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_inverse.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -15,6 +20,8 @@
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
+
+constexpr bool MIPMAP_ENABLED = true;
 
 static VkFilter extract_filter(fastgltf::Filter filter) {
   switch (filter) {
@@ -52,79 +59,96 @@ void LoadedGLTF::Draw(const glm::mat4& top_matrix, DrawContext& ctx) {
   }
 }
 
-void LoadedGLTF::clear_all() {}
+void LoadedGLTF::clear_all() {
+  VkDevice dv = creator->_device;
+  descriptor_pool.destroy_pools(dv);
+  creator->destroy_buffer(material_data_buffer);
+
+  for (auto& [k, v] : images) {
+
+    if (v.image == creator->_error_checkerboard_image.image) {
+      // dont destroy the default images
+      continue;
+    }
+    creator->destroy_image(v);
+  }
+
+  for (auto& sampler : samplers) {
+    vkDestroySampler(dv, sampler, nullptr);
+  }
+}
 
 std::optional<AllocatedImage> load_image(VulkanEngine* engine, fastgltf::Asset& asset, fastgltf::Image& image) {
   AllocatedImage newImage{};
 
   int width, height, nrChannels;
-  std::visit(
-      fastgltf::visitor{
-          [](auto& arg) {},
-          [&](fastgltf::sources::URI& filePath) {
-            assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
-            assert(filePath.uri.isLocalPath());   // We're only capable of loading
-                                                  // local files.
+  std::visit(fastgltf::visitor{
+                 [](auto& arg) {},
+                 [&](fastgltf::sources::URI& filePath) {
+                   assert(filePath.fileByteOffset == 0); // We don't support offsets with stbi.
+                   assert(filePath.uri.isLocalPath());   // We're only capable of loading
+                                                         // local files.
 
-            const std::string path(filePath.uri.path().begin(),
-                                   filePath.uri.path().end()); // Thanks C++.
-            unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
-            if (data) {
-              VkExtent3D imagesize;
-              imagesize.width = width;
-              imagesize.height = height;
-              imagesize.depth = 1;
+                   const std::string path(filePath.uri.path().begin(),
+                                          filePath.uri.path().end()); // Thanks C++.
+                   unsigned char* data = stbi_load(path.c_str(), &width, &height, &nrChannels, 4);
+                   if (data) {
+                     VkExtent3D imagesize;
+                     imagesize.width = width;
+                     imagesize.height = height;
+                     imagesize.depth = 1;
 
-              newImage =
-                  engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+                     newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                                     VK_IMAGE_USAGE_SAMPLED_BIT, MIPMAP_ENABLED);
 
-              stbi_image_free(data);
-            }
-          },
-          [&](fastgltf::sources::Array& vector) {
-            unsigned char* data = stbi_load_from_memory(vector.bytes.data(), static_cast<int>(vector.bytes.size()),
-                                                        &width, &height, &nrChannels, 4);
-            if (data) {
-              VkExtent3D imagesize;
-              imagesize.width = width;
-              imagesize.height = height;
-              imagesize.depth = 1;
+                     stbi_image_free(data);
+                   }
+                 },
+                 [&](fastgltf::sources::Array& vector) {
+                   unsigned char* data = stbi_load_from_memory(
+                       vector.bytes.data(), static_cast<int>(vector.bytes.size()), &width, &height, &nrChannels, 4);
+                   if (data) {
+                     VkExtent3D imagesize;
+                     imagesize.width = width;
+                     imagesize.height = height;
+                     imagesize.depth = 1;
 
-              newImage =
-                  engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_SAMPLED_BIT, false);
+                     newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                                     VK_IMAGE_USAGE_SAMPLED_BIT, MIPMAP_ENABLED);
 
-              stbi_image_free(data);
-            }
-          },
-          [&](fastgltf::sources::BufferView& view) {
-            auto& bufferView = asset.bufferViews[view.bufferViewIndex];
-            auto& buffer = asset.buffers[bufferView.bufferIndex];
+                     stbi_image_free(data);
+                   }
+                 },
+                 [&](fastgltf::sources::BufferView& view) {
+                   auto& bufferView = asset.bufferViews[view.bufferViewIndex];
+                   auto& buffer = asset.buffers[bufferView.bufferIndex];
 
-            std::visit(fastgltf::visitor{// We only care about VectorWithMime here, because we
-                                         // specify LoadExternalBuffers, meaning all buffers
-                                         // are already loaded into a vector.
-                                         [](auto& arg) {},
-                                         [&](fastgltf::sources::Array& vector) {
-                                           unsigned char* data =
-                                               stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
-                                                                     static_cast<int>(bufferView.byteLength), &width,
-                                                                     &height, &nrChannels, 4);
-                                           if (data) {
-                                             VkExtent3D imagesize;
-                                             imagesize.width = width;
-                                             imagesize.height = height;
-                                             imagesize.depth = 1;
+                   std::visit(fastgltf::visitor{// We only care about VectorWithMime here, because we
+                                                // specify LoadExternalBuffers, meaning all buffers
+                                                // are already loaded into a vector.
+                                                [](auto& arg) {},
+                                                [&](fastgltf::sources::Array& vector) {
+                                                  unsigned char* data =
+                                                      stbi_load_from_memory(vector.bytes.data() + bufferView.byteOffset,
+                                                                            static_cast<int>(bufferView.byteLength),
+                                                                            &width, &height, &nrChannels, 4);
+                                                  if (data) {
+                                                    VkExtent3D imagesize;
+                                                    imagesize.width = width;
+                                                    imagesize.height = height;
+                                                    imagesize.depth = 1;
 
-                                             newImage = engine->create_image(data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
-                                                                             VK_IMAGE_USAGE_SAMPLED_BIT, false);
+                                                    newImage = engine->create_image(
+                                                        data, imagesize, VK_FORMAT_R8G8B8A8_UNORM,
+                                                        VK_IMAGE_USAGE_SAMPLED_BIT, MIPMAP_ENABLED);
 
-                                             stbi_image_free(data);
-                                           }
-                                         }},
-                       buffer.data);
-          },
-      },
-      image.data);
+                                                    stbi_image_free(data);
+                                                  }
+                                                }},
+                              buffer.data);
+                 },
+             },
+             image.data);
 
   // if any of the attempts to load the data failed, we havent written the image
   // so handle is null
@@ -339,6 +363,16 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf_meshes(VulkanEngine* engine
         newSurface.material = materials[0];
       }
 
+      glm::vec3 min_pos = vertices[initial_vtx].position;
+      glm::vec3 max_pos = vertices[initial_vtx].position;
+      for (auto& vert : vertices) {
+        min_pos = glm::min(min_pos, vert.position);
+        max_pos = glm::max(max_pos, vert.position);
+      }
+      newSurface.bounds.origin = (max_pos + min_pos) / 2.f;
+      // box size
+      newSurface.bounds.extents = (max_pos - min_pos) / 2.f;
+      newSurface.bounds.sphere_radius = glm::length(newSurface.bounds.extents);
       newmesh->surfaces.push_back(newSurface);
     }
 
@@ -361,14 +395,13 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf_meshes(VulkanEngine* engine
     file.nodes[node.name.c_str()];
 
     std::visit(fastgltf::visitor{[&](fastgltf::Node::TransformMatrix matrix) {
-                                   memcpy(&newNode->local_transform, matrix.data(), sizeof(matrix));
+                                   newNode->local_transform = glm::make_mat4x4(matrix.data());
                                  },
                                  [&](fastgltf::TRS transform) {
-                                   glm::vec3 tl(transform.translation[0], transform.translation[1],
-                                                transform.translation[2]);
+                                   glm::vec3 tl = glm::make_vec3(transform.translation.data());
                                    glm::quat rot(transform.rotation[3], transform.rotation[0], transform.rotation[1],
                                                  transform.rotation[2]);
-                                   glm::vec3 sc(transform.scale[0], transform.scale[1], transform.scale[2]);
+                                   glm::vec3 sc = glm::make_vec3(transform.scale.data());
 
                                    glm::mat4 tm = glm::translate(glm::mat4(1.f), tl);
                                    glm::mat4 rm = glm::toMat4(rot);
@@ -377,7 +410,11 @@ std::optional<std::shared_ptr<LoadedGLTF>> load_gltf_meshes(VulkanEngine* engine
                                    newNode->local_transform = tm * rm * sm;
                                  }},
                node.transform);
+
+    // newNode->local_transform[1][1] *= -1;
+    // newNode->local_transform = glm::rotate(newNode->local_transform, glm::radians(-90.f), glm::vec3{1, 0, 0});
   }
+
   // run loop again to setup transform hierarchy
   for (int i = 0; i < gltf.nodes.size(); i++) {
     fastgltf::Node& node = gltf.nodes[i];

@@ -13,6 +13,14 @@
 #include <vk_loader.h>
 #include <vk_types.h>
 
+struct EngineStats {
+  float frame_time;
+  int triangle_count;
+  int drawcall_count;
+  float scene_update_time;
+  float mesh_draw_time;
+};
+
 struct MeshNode : public Node {
   std::shared_ptr<MeshAsset> mesh;
   virtual void Draw(const glm::mat4& topMatrix, DrawContext& ctx) override;
@@ -23,6 +31,7 @@ struct RenderObject {
   uint32_t first_index;
   VkBuffer index_buffer;
 
+  Bounds bounds;
   MaterialInstance* material;
   glm::mat4 transform;
   VkDeviceAddress vertex_buf_addr;
@@ -30,6 +39,7 @@ struct RenderObject {
 
 struct DrawContext {
   std::vector<RenderObject> opaque_surfaces;
+  std::vector<RenderObject> transparent_surfaces;
 };
 
 struct GLTFMettallicRoughness {
@@ -75,6 +85,7 @@ struct VulkanEngine {
   VkDevice _device;
 
   Camera _main_camera;
+  EngineStats stats;
 
   DrawContext _main_draw_context;
   std::unordered_map<std::string, std::shared_ptr<Node>> _loaded_nodes;
@@ -123,7 +134,7 @@ struct VulkanEngine {
   VkDescriptorPool _imm_descriptor_pool = VK_NULL_HANDLE;
 
   std::vector<ComputeEffect> _background_effects;
-  int32_t _current_background_effect{1};
+  int32_t _current_background_effect{0};
 
   VkPipelineLayout _triangle_pipeline_layout;
   VkPipeline _triangle_pipeline;

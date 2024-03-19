@@ -4,9 +4,13 @@ project(simple-vk-renderer)
 find_package(glfw3)
 find_package(Vulkan REQUIRED)
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
-# set(CMAKE_CXX_COMPILER "/usr/bin/g++-11")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 if(UNIX AND NOT APPLE)
   add_link_options("-lglfw;-lvulkan;-lXxf86vm;-lXrandr;-lXi")

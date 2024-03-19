@@ -1,15 +1,16 @@
+#include <chrono>
 #define GLFW_INCLUDE_VULKAN
 #define VMA_IMPLEMENTATION
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 
-#include "vk_engine.h"
 #include "camera.h"
 #include "fmt/base.h"
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 #include "vk_descriptors.h"
+#include "vk_engine.h"
 #include "vk_images.h"
 #include "vk_loader.h"
 #include "vk_mem_alloc.h"
@@ -51,6 +52,38 @@ constexpr std::array<const char*, 2> device_extensions{
 VulkanEngine* loaded_engine = nullptr;
 
 VulkanEngine& VulkanEngine::Get() { return *loaded_engine; }
+
+bool is_visible(const RenderObject& obj, const glm::mat4& viewproj) {
+  std::array<glm::vec3, 8> corners{
+      glm::vec3{1, 1, 1},  glm::vec3{1, 1, -1},  glm::vec3{1, -1, 1},  glm::vec3{1, -1, -1},
+      glm::vec3{-1, 1, 1}, glm::vec3{-1, 1, -1}, glm::vec3{-1, -1, 1}, glm::vec3{-1, -1, -1},
+  };
+
+  glm::mat4 matrix = viewproj * obj.transform;
+
+  glm::vec3 min = {1.5, 1.5, 1.5};
+  glm::vec3 max = {-1.5, -1.5, -1.5};
+
+  for (int c = 0; c < 8; c++) {
+    // project each corner into clip space
+    glm::vec4 v = matrix * glm::vec4(obj.bounds.origin + (corners[c] * obj.bounds.extents), 1.f);
+
+    // perspective correction
+    v.x = v.x / v.w;
+    v.y = v.y / v.w;
+    v.z = v.z / v.w;
+
+    min = glm::min(glm::vec3{v.x, v.y, v.z}, min);
+    max = glm::max(glm::vec3{v.x, v.y, v.z}, max);
+  }
+
+  // check the clip space box is within the view
+  if (min.z > 1.f || max.z < 0.f || min.x > 1.f || max.x < -1.f || min.y > 1.f || max.y < -1.f) {
+    return false;
+  } else {
+    return true;
+  }
+}
 
 bool check_validation_support() {
   uint32_t layer_count{};
@@ -171,7 +204,7 @@ void VulkanEngine::init_camera() {
   _main_camera = Camera(_window);
   _main_camera.velocity = glm::vec3(0, 0, 0);
   _main_camera.position = glm::vec3(30.f, 0, -85.f);
-  //_main_camera.position = glm::vec3(0, 0, 5);
+  // _main_camera.position = glm::vec3(0, 0, 5);
   _main_camera.pitch = 0.f;
   _main_camera.yaw = 0.f;
 }
@@ -941,11 +974,11 @@ void VulkanEngine::init_background_pipelines() {
   gradient.name = "gradient";
   gradient.pipeline_layout = _gradient_pipeline_layout;
   gradient.data = {};
-  gradient.data.data1 = glm::vec4(1, 0, 0, 1);
-  gradient.data.data2 = glm::vec4(0, 0, 1, 1);
+  gradient.data.data1 = glm::vec4(1, 1, 1, 1);
+  gradient.data.data2 = glm::vec4(1, 1, 1, 1);
 
   ComputeEffect sky{};
-  sky.name = "gradient";
+  sky.name = "sky";
   sky.pipeline_layout = _gradient_pipeline_layout;
   sky.data = {};
   sky.data.data1 = glm::vec4(0.1, 0.2, 0.4, 0.97);
@@ -1128,6 +1161,7 @@ void VulkanEngine::cleanup() {
 void VulkanEngine::run() {
 
   while (!glfwWindowShouldClose(_window)) {
+    auto start = std::chrono::system_clock::now();
 
     if (_resize_requested) {
       resize_swapchain();
@@ -1138,17 +1172,22 @@ void VulkanEngine::run() {
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
     ImGuiIO& io = ImGui::GetIO();
-    if (ImGui::Begin("background effect :)")) {
+    if (ImGui::Begin("stats")) {
 
-      ComputeEffect& effect = _background_effects[_current_background_effect];
+      //  ComputeEffect& effect = _background_effects[_current_background_effect];
 
-      ImGui::Text("Selected Effect: (%s)", effect.name);
-      ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-      ImGui::SliderInt("Effect Index", &_current_background_effect, 0, _background_effects.size() - 1);
-      ImGui::InputFloat4("data1", (float*)&effect.data.data1);
-      ImGui::InputFloat4("data2", (float*)&effect.data.data2);
-      ImGui::InputFloat4("data3", (float*)&effect.data.data3);
-      ImGui::InputFloat4("data4", (float*)&effect.data.data4);
+      //  ImGui::Text("Selected Effect: (%s)", effect.name);
+      //  ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
+      //  ImGui::SliderInt("Effect Index", &_current_background_effect, 0, _background_effects.size() - 1);
+      //  ImGui::InputFloat4("data1", (float*)&effect.data.data1);
+      //  ImGui::InputFloat4("data2", (float*)&effect.data.data2);
+      //  ImGui::InputFloat4("data3", (float*)&effect.data.data3);
+      //  ImGui::InputFloat4("data4", (float*)&effect.data.data4);
+      ImGui::Text("frametime %f ms", stats.frame_time);
+      ImGui::Text("draw time %f ms", stats.mesh_draw_time);
+      ImGui::Text("update time %f ms", stats.scene_update_time);
+      ImGui::Text("triangles %i", stats.triangle_count);
+      ImGui::Text("draws %i", stats.drawcall_count);
     }
 
     ImGui::End();
@@ -1156,6 +1195,9 @@ void VulkanEngine::run() {
     draw();
 
     glfwPollEvents();
+    auto end = std::chrono::system_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    stats.frame_time = elapsed.count() / 1000.f;
   }
   vkDeviceWaitIdle(_device);
 }
@@ -1313,6 +1355,30 @@ void VulkanEngine::draw_background(VkCommandBuffer cmd) {
 };
 
 void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
+  stats.drawcall_count = 0;
+  stats.triangle_count = 0;
+
+  std::vector<uint32_t> opaque_indices;
+  opaque_indices.reserve(_main_draw_context.opaque_surfaces.size());
+  for (int i = 0; i < _main_draw_context.opaque_surfaces.size(); i++) {
+    if (is_visible(_main_draw_context.opaque_surfaces[i], _scene_data.viewproj)) {
+      opaque_indices.push_back(i);
+    }
+  }
+
+  std::sort(opaque_indices.begin(), opaque_indices.end(), [&](const auto& iA, const auto& iB) {
+    const RenderObject& a = _main_draw_context.opaque_surfaces[iA];
+    const RenderObject& b = _main_draw_context.opaque_surfaces[iB];
+
+    if (a.material == b.material) {
+      return a.index_buffer < b.index_buffer;
+    } else {
+      return a.material < b.material;
+    }
+  });
+
+  auto start = std::chrono::system_clock::now();
+
   VkRenderingAttachmentInfo color_attachment_info =
       vkinit::attachment_info(_draw_image.image_view, nullptr, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
@@ -1322,25 +1388,7 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
 
   vkCmdBeginRendering(cmd, &rendering_info);
 
-  vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline);
-
-  VkViewport viewport = {};
-  viewport.x = 0;
-  viewport.y = 0;
-  viewport.width = _draw_extent.width;
-  viewport.height = _draw_extent.height;
-  viewport.minDepth = 0.f;
-  viewport.maxDepth = 1.f;
-
-  vkCmdSetViewport(cmd, 0, 1, &viewport);
-
-  VkRect2D scissor = {};
-  scissor.offset.x = 0;
-  scissor.offset.y = 0;
-  scissor.extent.width = viewport.width;
-  scissor.extent.height = viewport.height;
-
-  vkCmdSetScissor(cmd, 0, 1, &scissor);
+  // vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, _mesh_pipeline);
 
   AllocatedBuffer gpu_scene_buffer =
       create_buffer(sizeof(GPUSceneData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VMA_MEMORY_USAGE_CPU_TO_GPU);
@@ -1358,27 +1406,79 @@ void VulkanEngine::draw_geometry(VkCommandBuffer cmd) {
   writer.write_buffer(0, gpu_scene_buffer.buffer, sizeof(GPUSceneData), 0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
   writer.update_set(_device, scene_data_descriptors);
 
-  for (const RenderObject& render_obj : _main_draw_context.opaque_surfaces) {
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->pipeline);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->layout, 0, 1,
-                            &scene_data_descriptors, 0, nullptr);
+  MaterialPipeline* last_pipeline = nullptr;
+  MaterialInstance* last_material = nullptr;
+  VkBuffer last_index_buffer = VK_NULL_HANDLE;
+  auto draw = [&](const RenderObject& render_obj) {
+    if (render_obj.material != last_material) {
+      last_material = render_obj.material;
+      if (render_obj.material->pipeline != last_pipeline) {
+        last_pipeline = render_obj.material->pipeline;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->pipeline);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->layout, 0, 1,
+                                &scene_data_descriptors, 0, nullptr);
 
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->layout, 1, 1,
-                            &render_obj.material->material_desc_set, 0, nullptr);
+        VkViewport viewport = {};
+        viewport.x = 0;
+        viewport.y = 0;
+        viewport.width = _draw_extent.width;
+        viewport.height = _draw_extent.height;
+        viewport.minDepth = 0.f;
+        viewport.maxDepth = 1.f;
 
-    vkCmdBindIndexBuffer(cmd, render_obj.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+        vkCmdSetViewport(cmd, 0, 1, &viewport);
+
+        VkRect2D scissor = {};
+        scissor.offset.x = 0;
+        scissor.offset.y = 0;
+        scissor.extent.width = viewport.width;
+        scissor.extent.height = viewport.height;
+
+        vkCmdSetScissor(cmd, 0, 1, &scissor);
+      }
+      vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, render_obj.material->pipeline->layout, 1, 1,
+                              &render_obj.material->material_desc_set, 0, nullptr);
+    }
+
+    if (render_obj.index_buffer != last_index_buffer) {
+      last_index_buffer = render_obj.index_buffer;
+      vkCmdBindIndexBuffer(cmd, render_obj.index_buffer, 0, VK_INDEX_TYPE_UINT32);
+    }
+
     GPUDrawPushConstants push_constants;
     push_constants.vertex_buf_address = render_obj.vertex_buf_addr;
     push_constants.world_mat = render_obj.transform;
     vkCmdPushConstants(cmd, render_obj.material->pipeline->layout, VK_SHADER_STAGE_VERTEX_BIT, 0,
                        sizeof(GPUDrawPushConstants), &push_constants);
     vkCmdDrawIndexed(cmd, render_obj.index_count, 1, render_obj.first_index, 0, 0);
+
+    stats.drawcall_count++;
+    stats.triangle_count += render_obj.index_count / 3;
+  };
+
+  for (auto& idx : opaque_indices) {
+
+    draw(_main_draw_context.opaque_surfaces[idx]);
+  }
+  for (auto& obj : _main_draw_context.transparent_surfaces) {
+    draw(obj);
   }
 
   vkCmdEndRendering(cmd);
+
+  _main_draw_context.opaque_surfaces.clear();
+  _main_draw_context.transparent_surfaces.clear();
+
+  auto end = std::chrono::system_clock::now();
+
+  // convert to microseconds (integer), and then come back to miliseconds
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  stats.mesh_draw_time = elapsed.count() / 1000.f;
 }
 
 void VulkanEngine::update_scene() {
+  auto start = std::chrono::system_clock::now();
+
   _main_draw_context.opaque_surfaces.clear();
 
   _main_camera.update();
@@ -1404,6 +1504,11 @@ void VulkanEngine::update_scene() {
   //
   //    _loaded_nodes["Cube"]->Draw(translation * scale, _main_draw_context);
   //  }
+  auto end = std::chrono::system_clock::now();
+
+  // convert to microseconds (integer), and then come back to miliseconds
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  stats.scene_update_time = elapsed.count() / 1000.f;
 }
 
 void VulkanEngine::destroy_swapchain() {
@@ -1492,8 +1597,13 @@ AllocatedImage VulkanEngine::create_image(void* data, VkExtent3D size, VkFormat 
     vkCmdCopyBufferToImage(cmd, uploadbuffer.buffer, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                            &copyRegion);
 
-    vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-                             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (mipmapped) {
+      VkExtent2D image_extent{.width = new_image.image_extent.width, .height = new_image.image_extent.height};
+      vkutil::generate_mipmaps(cmd, new_image.image, image_extent);
+    } else {
+      vkutil::transition_image(cmd, new_image.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                               VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
   });
 
   destroy_buffer(uploadbuffer);
@@ -1612,11 +1722,15 @@ void MeshNode::Draw(const glm::mat4& top_matrix, DrawContext& ctx) {
     obj.index_count = s.count;
     obj.first_index = s.startIndex;
     obj.index_buffer = mesh->meshBuffers.index_buf.buffer;
-
+    obj.bounds = s.bounds;
     obj.transform = node_matrix;
     obj.vertex_buf_addr = mesh->meshBuffers.vertex_buf_address;
 
-    ctx.opaque_surfaces.push_back(obj);
+    if (s.material->data.pass_type == MaterialPass::Transparent) {
+      ctx.transparent_surfaces.push_back(obj);
+    } else {
+      ctx.opaque_surfaces.push_back(obj);
+    }
   }
   Node::Draw(top_matrix, ctx);
 }
